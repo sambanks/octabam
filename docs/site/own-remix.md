@@ -1,65 +1,76 @@
 # Build Your Own Remix
 
-You can assemble a personal remix from modules already in octabam. A remix
-chooses which modules are included and which effects appear in the FX1 and
-FX2 menus. The build refuses incompatible selections by name.
+You can build a custom remix from any compatible combination of modules in
+octabam. A remix defines which modules are included and which effects appear in
+the FX1 and FX2 menus. If you pick conflicting modules, the build stops and
+names the conflict.
 
-This guide is for combining existing modules. If you want to create a new
-feature or contribute a module, start with the
+This page covers combining existing modules. If you want to write or port a new
+module, start with the
 [developer documentation](https://github.com/sambanks/octabam/blob/main/CONTRIBUTING.md)
-and the [module author guide](https://github.com/sambanks/octabam/blob/main/docs/contributing/MODULES.md).
+and the
+[module author guide](https://github.com/sambanks/octabam/blob/main/docs/contributing/MODULES.md).
 
 ## 1. Prepare the build environment
 
-Follow the [build guide](https://github.com/sambanks/octabam/blob/main/docs/guide/BUILDING.md) through installing the toolchain and
-preparing your own OS 1.40C.
+Follow the
+[build guide](https://github.com/sambanks/octabam/blob/main/docs/guide/BUILDING.md)
+to install the toolchain and unpack your copy of OS 1.40C.
 
 ## 2. Select modules and effects
 
-Copy an existing remix's `remix.py` (for example `remixes/octabam/remix.py`) into a
-directory of your own, `remixes/community/<name>/`, named after you or its purpose
-(never `octabam-*`), and edit its `name`, its `modules` (the FX2 chooser, in row order)
-and, optionally, `fx1`. `make modules` lists every
-module key and the compatibility matrix. See the
+Copy an existing `remix.py` (such as `remixes/octabam/remix.py`) into a new
+directory at `remixes/community/<name>/`. Name it after yourself or its purpose
+rather than `octabam-*`. Edit `name`, `modules` (which sets the FX2 chooser in
+row order), and optionally `fx1`. Run `make modules` to list all module keys and
+the compatibility matrix. See the
 [composing guide](https://github.com/sambanks/octabam/blob/main/docs/guide/COMPOSING.md)
-for every field and the costs.
+for all available fields and DSP word costs.
 
-Select **USB** for USB MIDI and optional audio in either direction. Its
-TRACKS, MAIN, CUE, MASTER, IN and MIDI settings are changed on the unit in PROJ > BRAIN > SETTINGS
-and take effect at the next boot. A remix can fix one with a `Pin`.
+Include **USB** if you want USB MIDI and optional USB audio in either direction.
+Its TRACKS, MAIN, CUE, MASTER, IN, and MIDI settings can be changed on the unit
+under **PROJ → BRAIN → SETTINGS** (taking effect on the next boot), or locked
+to a fixed value in your remix with `Pin`.
 
 ## 3. Record and check the remix
 
-Add `remixes/community/<name>/README.md` describing what the remix includes. Update the remix index, then run:
+Add a `remixes/community/<name>/README.md` summarizing what the remix includes,
+update the remix index, and run the verification suite:
 
 ```bash
 make docs
 make check REMIX=<name>
 ```
 
-`make check` builds the image, runs its gates and boots it under the port.
-It is the minimum check before flashing; a successful build alone does not
-show that the remix works on hardware.
+`make check` builds the image, runs all verification gates, and boots it in the
+emulator. Treat it as the minimum bar before flashing; assembling cleanly does
+not guarantee that a remix behaves properly on hardware.
 
 ## 4. Build the image and install it
 
-The web builder builds only the released remixes, so build yours from source:
+Because the web builder only builds published remixes, build custom remixes from
+source:
 
 ```bash
 make image REMIX=<name> BUILD=1
 ```
 
-This writes `out/OCTATRACK_OCTABAM1.bin` (the card image), `out/OCTATRACK_OS1.40C_OCTABAM1.syx`
-(the MIDI image) and an `.RMX` file; the
-[build guide](https://github.com/sambanks/octabam/blob/main/docs/guide/BUILDING.md) says what
-`BUILD` is. Install them as in [Install the image](web-builder.md#install-the-image).
+This creates `out/OCTATRACK_OCTABAM1.bin` (CF card image),
+`out/OCTATRACK_OS1.40C_OCTABAM1.syx` (MIDI image), and an `.RMX` file. See the
+[build guide](https://github.com/sambanks/octabam/blob/main/docs/guide/BUILDING.md)
+for details on the `BUILD` tag, and follow
+[Install the image](web-builder.md#install-the-image) to install.
 
 ## Next steps
 
-- [Octabam v0.5](remix-octabam.md) is the ready-made selection;
-  [Octabam Verbs](remix-octabam-verbs.md) and [Octabam Bus](remix-octabam-bus.md) are two more.
-- [Community Remixes](reference/community.md) lists the remixes other contributors have shared;
-  open a pull request with your `remixes/community/<name>/` to add yours.
-- [Developer documentation](https://github.com/sambanks/octabam/blob/main/CONTRIBUTING.md)
-  and [writing a module](https://github.com/sambanks/octabam/blob/main/docs/contributing/MODULES.md)
-  if you want to add a new feature or share a module.
+- Ready-made remixes: [Octabam v0.5](remix-octabam.md),
+  [Octabam Verbs](remix-octabam-verbs.md), and
+  [Octabam Bus](remix-octabam-bus.md).
+- Browse [Community Remixes](reference/community.md) shared by other users, or
+  open a pull request with your `remixes/community/<name>/` directory to share
+  yours.
+- Read the
+  [developer documentation](https://github.com/sambanks/octabam/blob/main/CONTRIBUTING.md)
+  and
+  [writing a module](https://github.com/sambanks/octabam/blob/main/docs/contributing/MODULES.md)
+  if you want to create or contribute a new feature.

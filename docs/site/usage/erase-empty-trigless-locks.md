@@ -1,3 +1,4 @@
-When you erase the last lock of a trigless lock, on an audio or a MIDI
-track, the lock disappears instead of staying lit. Trigless locks made with [FUNC] + [TRIG] are left
-alone. Nothing on the panel.
+When you clear the last parameter lock from a trigless lock on an audio or MIDI
+track, the trigless lock is removed instead of remaining lit. Trigless locks
+created with [FUNC] + [TRIG] are left untouched. This fix has no controls or
+panel indicators.

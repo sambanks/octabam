@@ -1,3 +1,4 @@
-Stops the FX2 chooser from changing a track's effect: [YES] just closes
-it. FX1 is untouched. A Part or pattern paste, a Kit load and a project's
-stored effect ids can still set FX2; only the chooser is locked.
+FX2 LOCK prevents the FX2 chooser from changing a track's effect; pressing
+[YES] simply closes the menu. FX1 is unaffected. Pasting a Part or pattern,
+loading a Kit, or loading a project's saved effect IDs can still change FX2;
+only the chooser menu is locked.

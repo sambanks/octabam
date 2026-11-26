@@ -1,27 +1,35 @@
-A filter: a Moog ladder, an Oberheim SEM
-state-variable filter, an isolator and a formant bank, with an envelope and
-an LFO on the cutoff. The defaults are an exact passthrough: it does nothing until you turn it.
+SPECTRUM is a multimode filter offering four models (a Moog ladder, an
+Oberheim SEM state-variable filter, an isolator, and a formant bank) along
+with an envelope follower and an LFO modulating the cutoff. At its default
+settings it is an exact passthrough and leaves the signal unchanged until you
+adjust a control.
 
 ## Access
 
-Press FX1 or FX2 on a track; SPECTRUM is in the chooser with the stock effects.
+Press FX1 or FX2 on a track and select **SPECTRUM** from the effect chooser.
 
 ## Operation
 
-- MODE on page 2 picks the filter:
-  - **LADR** — a 24 dB/oct Moog transistor ladder. RES 127 is the edge of
-    self-oscillation; the passband level drops as RES rises, so the output
-    carries a makeup that keeps it close.
-  - **SEM** — a driven Oberheim state-variable filter. SHPE (page 2)
-    sweeps it low-pass (0) → band-pass (64) → high-pass (127) with an
-    equal-power crossfade.
-  - **ISO** — an isolator. FREQ is the low band's cutoff, RES is COLR.
-  - **VOWL** — a three-formant bank that morphs A → E → I → O → U as FREQ
-    turns; RES (SHRP) narrows the bands.
-- ENV is a peak follower onto the cutoff: instant attack, release on LSP.
-  LDP is an LFO onto the cutoff; LSP sets its speed (~0.08–9 Hz).
-- WDTH is mid/side width on the output; the centre (64) is untouched.
-- Load: with SPECTRUM on all eight tracks, the effects processor runs at about 28 % at the defaults and up to 78 % at its most demanding settings (an empty project reads about 24 %). Past 100 % the unit stalls until you switch it off and on.
+- **MODE** (page 2) selects the filter model:
+  - **LADR**: A 24 dB/oct Moog transistor ladder filter. **RES** at 127 sits
+    right at the edge of self-oscillation. Automatic makeup gain compensates
+    for the passband level drop as resonance increases.
+  - **SEM**: A driven Oberheim state-variable filter. **SHPE** (page 2) sweeps
+    smoothly from low-pass (0) through band-pass (64) to high-pass (127) with
+    an equal-power crossfade.
+  - **ISO**: A frequency isolator where **FREQ** sets the low-band cutoff and
+    **RES** controls **COLR**.
+  - **VOWL**: A three-formant vowel filter that morphs A → E → I → O → U as
+    you turn **FREQ**, while **RES** (**SHRP**) narrows the formant bands.
+- **ENV** routes a peak envelope follower to the cutoff, with instant attack
+  and release time controlled by **LSP**. **LDP** routes an LFO to the cutoff,
+  with speed set by **LSP** (~0.08–9 Hz).
+- **WDTH** adjusts stereo mid/side width at the output; centre (64) leaves the
+  stereo image unchanged.
+- **DSP load**: With SPECTRUM loaded on all eight tracks, the effects
+  processor runs at roughly 28% at default settings and up to 78% at its most
+  demanding settings (an empty project uses about 24%). Exceeding 100% stalls
+  the unit until you power-cycle it.
 
 ## Parameters
 

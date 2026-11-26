@@ -1,15 +1,8 @@
-A **Buchla-style complex oscillator** as an Octatrack track machine: two
-operators in FM, a sine wavefolder after them, modulator feedback, and
-**sine → saw → square** morphs on each operator (**SRC SETUP** **PWM**:
-sine lean / saw phase-skew / square duty). The **PWM** knob leaves the
-**CAR**/**MOD** icons alone. Timbre from folding and index. Up to **six**
-CX OSC tracks per Part when every track's **MOD** morph is at **0**. With
-the morphs, **PWM**, **FDBK**, **INDX**,
-**DEC** and **FOLD** all in use, play at most **four** CX OSC tracks. The Part
-still allows six; the extra tracks overload the unit's audio processor.
+CX OSC is a **Buchla-style complex oscillator** implemented as an Octatrack track machine. It provides two FM operators, a post-FM sine wavefolder, modulator feedback, and continuous **sine → saw → square** waveform morphs on each operator (**SRC SETUP** **PWM** controls sine lean, saw phase-skew, or square duty cycle without changing the **CAR**/**MOD** icons). Timbre is shaped primarily through wavefolding and FM index.
 
-Built on Tim Hastie's FM SYNTH engine (local fork). Remixes that ship
-CX OSC omit SYNTH MACHINE (same seat).
+You can run up to **six** CX OSC tracks per Part when every track's **MOD** morph is set to **0**. When the waveform morphs, **PWM**, **FDBK**, **INDX**, **DEC**, and **FOLD** are all active, limit playback to **four** CX OSC tracks; the Part still lets you assign six, but extra tracks will overload the audio processor.
+
+CX OSC is built on a local fork of Tim Hastie's FM SYNTH engine. Remixes that include CX OSC omit SYNTH MACHINE because both share the same slot.
 
 ![CX OSC signal path: mod → FM → carrier → MIX → FOLD → out.](../../img/cxosc/path.svg)
 
@@ -17,114 +10,79 @@ CX OSC omit SYNTH MACHINE (same seat).
 
 ## Signal path
 
-Every sample:
+On each sample, audio flows through four stages:
 
-1. **Modulator** runs (**RATO**, **MOD**, **FDBK** into its own phase).
-2. **INDX** (scaled by the **DEC** envelope) FM's that into the **carrier**
-   phase (**PTCH**, **FINE**, **CAR**).
-3. **MIX** crossfades the FM'd **carrier** with the **heard modulator**
-   (**MOD** morph: sine / DPW saw / DPW square). **FDBK** still uses the
-   clean mod sine. That blend is the **folder input**.
-4. **FOLD** (+ **SYMM**) wavefolds that blend and dry/wets the folder
-   against the pre-fold signal → out.
+1. The **modulator** runs using **RATO**, **MOD**, and **FDBK** (which feeds back into the modulator's own phase).
+2. **INDX** (scaled by the **DEC** envelope) applies FM from the modulator into the **carrier** phase (**PTCH**, **FINE**, **CAR**).
+3. **MIX** crossfades between the FM-modulated **carrier** and the morphed **modulator** (**MOD** morph: sine, DPW saw, or DPW square), while **FDBK** always uses the clean modulator sine. The resulting blend feeds the **wavefolder**.
+4. **FOLD** (with **SYMM**) folds the blended signal and crossfades the folded output with the pre-fold signal before sending it to the track output.
 
 ### MIX
 
-**MIX** chooses what the folder hears. **FOLD** sets how hard you fold.
-
-After FM you have two samples: the FM'd carrier, and the MMOR'd modulator.
-**MIX** lerps between them. Whatever comes out is what the wavefolder hears.
+**MIX** selects what enters the wavefolder, while **FOLD** sets how heavily it is folded. After the FM stage, you have two signals: the FM-modulated carrier and the morphed modulator. **MIX** crossfades between them before the wavefolder stage.
 
 | MIX | Folder input |
 |---|---|
-| **0** (default) | carrier only. Classic FM into the folder |
-| mid | carrier blended with modulator |
-| **127** | modulator only (MMOR shape). Solo it like CMOR on the carrier |
+| **0** (default) | Carrier only (classic FM into the folder) |
+| mid | Blend of carrier and modulator |
+| **127** | Modulator only (morphed modulator shape, allowing you to audition it just like **CAR** on the carrier) |
 
-Open **FOLD** to hear the folder. Raise **MIX** when you want the
-modulator smashed through it too. **FOLD** at 0 bypasses the folder.
-**MIX** still solos / blends the dry waves.
+Turn up **FOLD** to hear the wavefolder, and raise **MIX** when you want to fold the modulator alongside or instead of the carrier. Setting **FOLD** to 0 bypasses the folder while **MIX** continues to blend or solo the dry waveforms.
 
 ## Access
 
 ### Select
 
-Sixth machine-list row (**CX OSC**, under PICKUP).
+CX OSC appears as the sixth row in the machine list (under PICKUP). You can select it in three ways:
 
-- Double-tap the **`[TRACK]`** key → machine list → **CX OSC** → **`[YES]`**
-- **`[FUNC]` + `[SRC]`** → **SELECT MACHINE TYPE** → **CX OSC** → **`[YES]`**
-- From **SRC SETUP**'s left machine list → **CX OSC** → **`[YES]`**
+- Double-tap the **`[TRACK]`** key, select **CX OSC**, and press **`[YES]`**.
+- Press **`[FUNC]` + `[SRC]`**, open **SELECT MACHINE TYPE**, select **CX OSC**, and press **`[YES]`**.
+- Open **SRC SETUP**, pick **CX OSC** from the left-hand machine list, and press **`[YES]`**.
 
-On a track that already has a sample, **`[FUNC]` + `[SRC]`** may open the
-sample list first. **`[LEFT]`** reaches the machines.
+If the track already has a sample assigned, **`[FUNC]` + `[SRC]`** may open the sample list first; press **`[LEFT]`** to reach the machine list.
 
 ### Pages
 
-- **PLAYBACK.** **PTCH** **RATO** **INDX** **FINE** **FOLD** **MIX**
-- **`[FUNC]` + `[PLAYBACK]`.** **SRC SETUP.** **CAR** **MOD** **DEC**
-  **SYMM** **FDBK** **PWM**
-- **AMP.** **ATK** / **HOLD** / **REL** (engine-owned). Selecting CX seeds
-  **ATK** 0 / **HOLD INF** / **REL** 0 and **LEG MONO**
-- **LFO.** **PMTR** lists PLAYBACK (**PTCH** **RATO** **INDX** **FINE**
-  **FOLD** **MIX**) then AMP / FX, then SETUP **CAR** / **MOD** / **SYMM**
-  / **FDBK** / **PWM**. **DEC** stays on its knob. No VOIC / CHRD. LFO 3
-  stays **SPD3** / **DEP3**
+- **PLAYBACK:** **PTCH**, **RATO**, **INDX**, **FINE**, **FOLD**, **MIX**.
+- **SRC SETUP (`[FUNC]` + `[PLAYBACK]`):** **CAR**, **MOD**, **DEC**, **SYMM**, **FDBK**, **PWM**.
+- **AMP:** **ATK**, **HOLD**, and **REL** are managed by the synth engine. Selecting CX OSC initializes **ATK** to 0, **HOLD** to INF, **REL** to 0, and **LEG** to MONO.
+- **LFO:** **PMTR** lists PLAYBACK parameters (**PTCH**, **RATO**, **INDX**, **FINE**, **FOLD**, **MIX**), followed by AMP and FX parameters, and then SETUP parameters (**CAR**, **MOD**, **SYMM**, **FDBK**, **PWM**). **DEC** is not an LFO destination. There are no VOIC or CHRD entries, and LFO 3 retains **SPD3** and **DEP3**.
 
-**`[FUNC]`** on PLAYBACK knobs: **PTCH** ±12 (octave). **RATO** snaps
-classic FM ratios. **`[FUNC]`** on SETUP **CAR** / **MOD** snaps 0 / 64 /
-127.
+Holding **`[FUNC]`** while turning PLAYBACK knobs steps **PTCH** by ±12 semitones (octaves) and snaps **RATO** to classic FM ratios. Holding **`[FUNC]`** on SETUP **CAR** or **MOD** snaps between 0, 64, and 127.
 
 ### Play
 
-Trigs, chromatic keys, or MIDI. Last note wins. AMP **HOLD** owns note
-length (**HOLD INF** = until **`[STOP]`**). P-locks, scenes, and MIDI CCs
-hit PLAYBACK / SETUP like any machine. Stock FX1 / FX2 and quantizer
-**GLIDE** work as usual.
+Play CX OSC using sequencer trigs, chromatic keys, or MIDI with last-note priority. AMP **HOLD** controls note duration (**HOLD INF** sustains until you press **`[STOP]`**). Parameter locks, scenes, and MIDI CCs work on PLAYBACK and SETUP parameters as with any other machine, and stock FX1, FX2, and quantizer **GLIDE** work normally.
 
 ## Controls
 
 | Page | Knob | Range | Default | What it does |
 |---|---|---|---|---|
-| PLAYBACK | PTCH | −64..+63 | 0 | coarse pitch (semitones); chromatic / MIDI add on top |
-| PLAYBACK | RATO | 0.25..4 | ~1 | modulator∶carrier; free on the knob, **`[FUNC]`** snaps classic FM ratios |
-| PLAYBACK | INDX | 0..127 | 0 | FM depth; **0 = no FM** (carrier / fold only) |
-| PLAYBACK | FINE | −64..+63 ¢ | 0c (raw 64) | cents |
-| PLAYBACK | FOLD | 0..127 | 0 | wavefolder dry/wet after MIX; **0 = bypass** |
-| PLAYBACK | MIX | 0..127 | 0 | **folder input:** carrier↔modulator crossfade; **0 = carrier only** |
-| SETUP | CAR | 0..127 | 0 | carrier morph: **0** sine → **64** saw → **127** square; **`[FUNC]`** snaps landmarks |
-| SETUP | MOD | 0..127 | 0 | modulator morph (same map; DPW saw/pulse); hear via **INDX** (FM) or **MIX 127** (solo); **`[FUNC]`** snaps |
-| SETUP | DEC | 0..127 | 127 | index decay time constant: **0 = instant**; **1–32 = 1 ms/step**, then steps widen to **5.061 s** at 126; **127 = HOLD** (INDX stays with the knob) |
-| SETUP | SYMM | 0..127 | 64 | fold half-wave skew; **64 = even**; needs **FOLD** up |
-| SETUP | FDBK | 0..127 | 0 | modulator feedback (always the unmorphed mod sine) |
-| SETUP | PWM | **−64..+63** (byte 0..127) | **0** (byte 64) | cycle lean: sine soft lean; saw phase-skew (steep↔shallow ramp, still a saw); square duty (**0** ≈ 50%) |
+| PLAYBACK | PTCH | −64..+63 | 0 | Coarse pitch in semitones; chromatic keys and MIDI notes add on top |
+| PLAYBACK | RATO | 0.25..4 | ~1 | Modulator-to-carrier ratio; continuous on the knob, or hold **`[FUNC]`** to snap to classic FM ratios |
+| PLAYBACK | INDX | 0..127 | 0 | FM depth; **0 = no FM** (carrier/folder only) |
+| PLAYBACK | FINE | −64..+63 ¢ | 0c (raw 64) | Fine pitch in cents |
+| PLAYBACK | FOLD | 0..127 | 0 | Wavefolder dry/wet amount after MIX; **0 = bypass** |
+| PLAYBACK | MIX | 0..127 | 0 | **Folder input:** crossfades between carrier and modulator; **0 = carrier only** |
+| SETUP | CAR | 0..127 | 0 | Carrier morph: **0** sine → **64** saw → **127** square; **`[FUNC]`** snaps to landmarks |
+| SETUP | MOD | 0..127 | 0 | Modulator morph (same map, using DPW saw/pulse); audible via **INDX** (FM) or **MIX 127** (solo); **`[FUNC]`** snaps |
+| SETUP | DEC | 0..127 | 127 | Index decay time constant: **0 = instant**; **1–32 = 1 ms/step**, widening up to **5.061 s** at 126; **127 = HOLD** (INDX stays at the knob setting) |
+| SETUP | SYMM | 0..127 | 64 | Wavefolder half-wave symmetry skew; **64 = symmetric**; requires **FOLD** above 0 |
+| SETUP | FDBK | 0..127 | 0 | Modulator feedback (always uses the unmorphed modulator sine) |
+| SETUP | PWM | **−64..+63** (byte 0..127) | **0** (byte 64) | Waveform cycle lean: soft lean on sine, phase-skew on saw (steep to shallow ramp), and duty cycle on square (**0** ≈ 50%) |
 
 ### How the knobs interact
 
-- **Clean sine carrier.** **INDX**, **FOLD**, **FDBK**, CMOR, MMOR at 0.
-- **Hear FM.** Raise **INDX**. It affects all **CAR** shapes: sine, saw, and
-  square. **RATO** sets sideband spacing (1 = octaves; non-integers clang).
-  **FDBK** needs **INDX**. MMOR also colours FM then, or solo the MMOR wave
-  with **MIX 127** / **INDX** 0.
-- **Folder.** Raise **FOLD** first. **MIX** chooses *what* gets folded
-  (carrier vs modulator). **SYMM** tips which polarity the folder
-  emphasises.
-- **Morph while folding.** High **FOLD** can make a saw-ish CMOR still
-  sound sine-ish. Drop **FOLD** near 0 when auditioning CMOR/**PWM**.
-- **DEC and MIX.** SETUP **C DEC** controls the **INDX** envelope. Each
-  sequencer trig starts it at full **INDX** for that frame, then decay begins
-  on the next frame, even while the oscillator is sounding. Live legato notes
-  keep the running envelope. It reaches zero without a residual tail.
-  PLAYBACK **F MIX** blends the carrier and modulator before **FOLD**.
-- **CMOR vs MMOR.** Same **0** sine / **64** saw / **127** square map.
-  Carrier = hard saw/pulse, modulator = DPW saw/pulse. **PWM** is
-  region-specific (sine lean / saw skew / square duty). Audition with
-  **FOLD** near 0.
+- **Clean sine carrier:** Set **INDX**, **FOLD**, **FDBK**, **CAR**, and **MOD** to 0.
+- **Hearing FM:** Raise **INDX** to modulate any **CAR** waveform (sine, saw, or square). **RATO** sets sideband spacing (1 produces octave harmonics, while non-integers create clangorous tones). **FDBK** requires **INDX** above 0 to be heard. Turning up **MOD** also colors the FM modulation, or you can solo the morphed modulator waveform by setting **MIX** to 127 with **INDX** at 0.
+- **Wavefolder:** Raise **FOLD** first so the folder is active. Use **MIX** to choose whether the carrier, modulator, or a blend feeds the folder, and adjust **SYMM** to bias which half of the waveform the folder emphasizes.
+- **Morphing while folding:** High **FOLD** settings can make a saw-like **CAR** setting still sound sine-like. Lower **FOLD** near 0 when auditioning **CAR** or **PWM** changes.
+- **DEC and MIX:** SETUP **C DEC** controls the **INDX** decay envelope. Each sequencer trig resets the envelope to the full **INDX** value for that frame and begins decaying on the next frame, even while the oscillator is already sounding. Live legato notes preserve the running envelope, which decays cleanly to zero with no residual tail. PLAYBACK **F MIX** blends the carrier and modulator prior to **FOLD**.
+- **CAR vs. MOD morphs:** Both share the **0** sine, **64** saw, **127** square map, with hard saw/pulse on the carrier and DPW saw/pulse on the modulator. **PWM** adapts to the current waveform region (sine lean, saw skew, or square duty). Lower **FOLD** near 0 to hear these shapes clearly.
 
 ## LFO
 
-Stock destinations first (PLAYBACK names): **PTCH** **RATO** **INDX**
-**FINE** **FOLD** **MIX**, then AMP / LFO speeds / FX1 / FX2. Extra SETUP
-destinations:
+Standard destinations appear first (using PLAYBACK names): **PTCH**, **RATO**, **INDX**, **FINE**, **FOLD**, and **MIX**, followed by AMP, LFO speeds, FX1, and FX2. Extra SETUP destinations are listed at the end:
 
 | PMTR | Destination |
 |---|---|
@@ -134,25 +92,18 @@ destinations:
 | 33 | FDBK |
 | 34 | PWM |
 
-**PTCH** LFO depth matches FLEX. **DEC** is not an LFO destination; it
-stays under its knob (and locks / scenes).
+**PTCH** LFO depth matches FLEX. **DEC** cannot be modulated by an LFO, though it still responds to knob turns, parameter locks, and scenes.
 
 ### A short listen path
 
-1. **INDX** mid, **DEC** at HOLD, **FOLD** / **MIX** / **FDBK** / morphs
-   at 0. Plain FM.
-2. Open **FOLD**. Still folding the carrier only.
-3. Raise **MIX**. Modulator enters the folder.
-4. CMOR 0→64→127 (sine/saw/square). **PWM** at each landmark.
-5. MMOR only with **INDX** still up. **FDBK** last for growl.
+1. Start with **INDX** at mid-range, **DEC** at HOLD, and **FOLD**, **MIX**, **FDBK**, **CAR**, and **MOD** at 0 to hear plain FM.
+2. Turn up **FOLD** to fold the FM carrier.
+3. Raise **MIX** to bring the modulator into the folder.
+4. Sweep **CAR** across 0 → 64 → 127 (sine, saw, square) and try **PWM** at each point.
+5. With **INDX** raised, sweep **MOD** to hear how modulator shapes change the FM timbre, then add **FDBK** for extra growl.
 
 ## Saved Parts
 
-New seeds apply only when you **choose** CX OSC. Reloaded Parts keep their
-saved bytes.
+Default values are initialized only when you newly **select** CX OSC; reloaded Parts preserve their saved parameter bytes.
 
-PLAYBACK **D**/**E**/**F** used to be **FOLD** / **SYMM** / **DEC**
-(VRCS-CX VS). On this tip those bytes are **FINE** / **FOLD** / **MIX**.
-A VS Part with **DEC** at HOLD loads as **MIX** 127, and old **FOLD** 40
-becomes **FINE** raw 40 (−24c). Re-select the machine or edit the knobs
-after loading an older project.
+In earlier builds (VRCS-CX VS), PLAYBACK **D**/**E**/**F** held **FOLD**, **SYMM**, and **DEC** instead of **FINE**, **FOLD**, and **MIX**. As a result, loading an older VS Part with **DEC** set to HOLD maps to **MIX** 127, and an old **FOLD** value of 40 loads as **FINE** raw 40 (−24c). Re-select the machine or update those knobs after loading an older project.

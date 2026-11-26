@@ -1,11 +1,11 @@
-Provides the native Part-state access used by MIDI Loopback. Include MIDI PART
-STATE when selecting MIDI LOOPBACK in a custom remix. It adds no screen or
-control of its own.
+MIDI PART STATE provides the native Part-state access used by MIDI Loopback.
+Include it when selecting MIDI LOOPBACK in a custom remix. It adds no screen
+or control of its own.
 
-Routing settings belong to the native Part: Save, Reload, Clear and Paste use
-the existing Part operations. Consumers choose the context for their producer:
-Loopback reads each MIDI track's applied Part, independently of the Part selected
-for editing or retained by an audio voice.
+Routing settings belong to the native Part, so Save, Reload, Clear, and Paste
+use the existing Part operations. Each consumer selects which Part context to
+read: Loopback reads each MIDI track's applied Part independently of the Part
+selected for editing or retained by an audio voice.
 
 ## Stock compatibility
 

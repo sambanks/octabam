@@ -1,16 +1,17 @@
-A mono single-head tape echo with stereo dry output, in place of FX2
-SPRING REV. It runs on the ColdFire CPU, not the DSP, in the stock delay's
-four-second per-track ring, so the DSP side is an empty passthrough.
-Repeats darken and wobble with the AGE and WOW knobs, and feedback past the
-middle grows tape noise into self-oscillation.
+TAPE ECHO is a mono single-head tape echo with stereo dry output that replaces
+FX2 SPRING REV. It runs on the ColdFire CPU rather than the DSP using the stock
+delay's four-second per-track ring buffer, leaving the DSP side as an empty
+passthrough. Repeats darken and wobble as you raise AGE and WOW, and feedback
+past the midpoint builds tape noise into self-oscillation.
 
 ## Access
 
-An effect on a track: select the track, press FX2, and pick TAPE ECHO from
-the chooser, where SPRING REV was. Everything is on page 1; page 2 is
-disabled. Not in an official remix; build the test remix `tapeecho`.
-Not hardware-qualified: earlier builds froze the unit while editing with
-three to six instances, and the current build is not flashed.
+Select a track, press FX2, and choose TAPE ECHO from the chooser where SPRING
+REV used to be. All parameters are on page 1; page 2 is disabled. This module
+is not included in the official remixes; build the `tapeecho` remix to use it.
+It is not yet hardware-qualified: earlier builds froze the unit during editing
+with three to six active instances, and the current build has not been flashed
+to hardware.
 
 ![FX2 SETUP with Tape Echo selected.](../../img/tapeecho/chooser.png)
 
@@ -18,26 +19,26 @@ three to six instances, and the current build is not flashed.
 
 ## Operation
 
-- SYNC FREE: TIME is continuous, 46 to 231 ms.
-- SYNC BEAT: TIME picks one of twelve note divisions, shown by name
-  (T = triplet, dot = dotted): 1/64, 1/32 triplet, 1/32, 1/16 triplet,
-  1/16, 1/8 triplet, dotted 1/16, 1/8, 1/4 triplet, dotted 1/8, 1/4,
-  dotted 1/4. The time follows the project tempo; all twelve fit from 30 to
+- In SYNC FREE mode, TIME is continuous from 46 to 231 ms.
+- In SYNC BEAT mode, TIME selects one of twelve named note divisions
+  (T = triplet, dot = dotted): 1/64, 1/32 triplet, 1/32, 1/16 triplet, 1/16,
+  1/8 triplet, dotted 1/16, 1/8, 1/4 triplet, dotted 1/8, 1/4, and dotted 1/4.
+  The delay follows the project tempo, and all twelve divisions fit from 30 to
   300 BPM.
-- A change of delay time in BEAT crossfades the read for about 11.6 ms and
-  settles within about 23 ms of the last edit.
-- MIX 0 is exact dry.
+- Changing the delay time in BEAT mode crossfades the read pointer over about
+  11.6 ms and settles within about 23 ms of the last edit.
+- MIX at 0 outputs the exact dry signal.
 - DRIVE is fixed at 0.
-- AGE sits in the slot HEADS had. A saved project that used HEADS locks
-  needs them reset.
+- AGE occupies the parameter slot formerly used by HEADS, so saved projects
+  with HEADS parameter locks need those locks reset.
 
 ## Parameters
 
 | Page | Knob | Range | What it does |
 |---|---|---|---|
 | 1 | TIME | 0-127 | 46-231 ms in FREE; a division in BEAT |
-| 1 | FDBK | 0-127 | regeneration; the top of the range self-oscillates |
+| 1 | FDBK | 0-127 | Regeneration; the top of the range self-oscillates |
 | 1 | WOW | 0-127 | 0.8 Hz wow plus random flutter; 0 is static |
-| 1 | AGE | 0-127 | repeat bandwidth, flutter and hiss; fresh at 0, worn at 127 |
-| 1 | SYNC | FREE, BEAT | continuous or tempo-quantised time |
-| 1 | MIX | 0-127 | dry/wet; 0 is exact dry |
+| 1 | AGE | 0-127 | Repeat bandwidth, flutter, and hiss; fresh at 0, worn at 127 |
+| 1 | SYNC | FREE, BEAT | Continuous or tempo-quantised time |
+| 1 | MIX | 0-127 | Dry/wet mix; 0 is exact dry |

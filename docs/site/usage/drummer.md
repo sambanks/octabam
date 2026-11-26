@@ -1,70 +1,74 @@
 ## What it does
 
-DRUMMER turns a FLEX track holding a **sliced drum sample** into a drummer.
-You give it a loop (or a kit of one-shots) cut into slices; it sorts the
-slices into drums and plays them, live, in a style you pick. Nothing is
-written into the pattern: at every step DRUMMER decides which slice plays,
-how loud and how early or late, from a handful of knobs. Turn them while it
-plays and the drummer follows: simpler or busier, straighter or looser,
-with fills, ghost notes, breaks on the crossfader.
+DRUMMER turns a FLEX track holding a **sliced drum sample** into a generative
+drummer. You load a loop or a kit of one-shots cut into slices; DRUMMER sorts
+the slices into drum roles and plays them live in the style you choose. Nothing
+is written into the pattern. At each step, DRUMMER chooses which slice to play,
+how loud to play it, and how early or late it lands based on a set of knobs.
+Turning the knobs while it plays changes the performance in real time, making
+it simpler or busier, straighter or looser, with fills, ghost notes, and breaks
+on the crossfader.
 
-It has two ways of playing:
+DRUMMER has two playback modes:
 
-- **A style** (REDRUM OFF). DRUMMER plays one of 29 written grooves
-  (breakbeat, funk, house, jungle, dub, afrobeat, bossa, techno, trap...)
-  with the sounds of your kit.
-- **REDRUM** (ON). DRUMMER plays **your loop's own groove**, slice by slice,
-  and the same knobs bend it: replay the break as it is, then thin it, swap
-  its hits, add ghosts, fills and breaks.
+- **Style mode** (REDRUM OFF): DRUMMER plays one of 29 built-in grooves
+  (breakbeat, funk, house, jungle, dub, afrobeat, bossa, techno, trap, and
+  more) using the sounds of your kit.
+- **REDRUM mode** (ON): DRUMMER plays **your loop's own groove**, slice by
+  slice, while the same knobs reshape it. You can play the break as recorded,
+  thin it out, swap hits, and add ghost notes, fills, and breaks.
 
-The track stays a FLEX track: its sample, slices, AMP, LFOs and effects are
-FLEX's, and a project opened on a stock Octatrack finds a plain FLEX track.
+The track remains a FLEX track, so its sample, slices, AMP, LFOs, and effects
+all work as usual. If you open the project on a stock Octatrack, it appears as
+a standard FLEX track.
 
 ## Where to find it
 
-DRUMMER is in the `drummer` test remix. It needs STORE (the kits are saved
-with the project) and PAGES (KIT BALANCE and NEXT). Any of the eight
-tracks can be a DRUMMER track, each with its own kit.
+DRUMMER is included in the `drummer` test remix. It requires STORE (so kits are
+saved with the project) and PAGES (for the KIT BALANCE and NEXT pages). Any of
+the eight tracks can be a DRUMMER track, each with its own kit.
 
 ## Quick start
 
-1. Load a drum loop on a FLEX track and **slice it** in the audio editor
-   (a grid, transients or by hand: DRUMMER reads the slices, it never moves
-   them). One hit a slice works best.
-2. **FUNC + SRC** opens the machine list. Scroll down: **DRUMMER** is the
-   last row. **YES** makes the track a DRUMMER track and shows its CONFIG
-   knobs (RIGHT on the row picks another sample first).
+1. Load a drum loop onto a FLEX track and **slice it** in the audio editor
+   using a grid, transients, or manual placement (DRUMMER reads your slices and
+   never moves them). One hit per slice works best.
+2. Press **FUNC + SRC** to open the machine list and scroll down to **DRUMMER**
+   on the last row. Press **YES** to make the track a DRUMMER track and display
+   its CONFIG knobs (or press RIGHT on the row to pick a different sample
+   first).
 
    ![The machine list, DRUMMER the last row](../../img/drummer/machines.png)
 
-3. Close with **NO**: DRUMMER asks to make a kit. **YES**: it listens to
-   every slice and sorts it (kick, snare, hats...); the toast says how many
-   slices it sorted. **NO** leaves the kit empty; then only the track's own
-   trigs play.
+3. Press **NO** to close the machine list. DRUMMER prompts you to build a kit.
+   Press **YES** to analyse and sort every slice into drum roles (kick, snare,
+   hats, and so on); a toast reports how many slices were sorted. Pressing
+   **NO** leaves the kit empty so that only the track's own trigs play.
 
    ![The kit question](../../img/drummer/ask.png)
 
    ![AUTO done](../../img/drummer/auto.png)
 
-4. **PLAY**. The track plays the style shown on CONFIG (BRKB, a breakbeat,
-   at first). Turn the knobs.
+4. Press **PLAY**. The track starts playing the style selected on CONFIG
+   (`BRKB`, a breakbeat, by default), and you can shape it with the knobs.
 
-You do not need a single trig on the track. A trig you place still plays:
-it is an accent (on an empty step, a kick on the beat, else a snare).
+You do not need any trigs placed on the track. Any trig you do place still
+plays as an accent (a kick on the beat if the step is otherwise empty, or a
+snare otherwise).
 
 ## The pages
 
-A DRUMMER track has five screens of its own. **SRC** cycles the first three
-(LIVE, KIT BALANCE, NEXT); **FUNC + SRC** opens CONFIG; **a trig key held +
-BANK** opens the KIT window.
+A DRUMMER track has five dedicated screens. Press **SRC** to cycle through the
+first three (LIVE, KIT BALANCE, NEXT), press **FUNC + SRC** to open CONFIG, and
+**hold a trig key and press BANK** to open the KIT window.
 
 | screen | open with | what is on it |
 |---|---|---|
-| LIVE | SRC | the six knobs you play: SEED DENS CPLX ORN BRK GHST |
-| KIT BALANCE | SRC again | how much each group of drums plays |
-| NEXT | SRC a third time | orders on the beat: stop, come back, a fill, a style, a break |
-| CONFIG | FUNC + SRC | the style and the feel: STYL VEL ALT SWNG HUMN VAR |
-| KIT window | hold a trig, press BANK | the kit: each slice's drum, level, timing; the track's settings and REDRUM; the fills |
+| LIVE | SRC | The six performance knobs: SEED, DENS, CPLX, ORN, BRK, GHST |
+| KIT BALANCE | SRC again | How heavily each drum group plays |
+| NEXT | SRC a third time | Beat-synced commands: stop, resume, fill, style change, or break |
+| CONFIG | FUNC + SRC | Style and feel settings: STYL, VEL, ALT, SWNG, HUMN, VAR |
+| KIT window | hold a trig, press BANK | Per-slice drum assignment, level, and timing; track settings and REDRUM; fill settings |
 
 ### LIVE: the knobs you play
 
@@ -72,42 +76,45 @@ BANK** opens the KIT window.
 
 | knob | 0 | 64 | 127 |
 |---|---|---|---|
-| **SEED** | the style as written | a variation of it | the furthest variation |
-| **DENS** | almost nothing: the backbone only | the style as written | busier: extra hits drawn from the complex version |
-| **CPLX** | the BASIC version of the style | STANDARD | COMPLEX |
-| **ORN** | no ornaments | flams on loud snares, rolls closing fills | ruffs, doubled and tripled hats too |
-| **BRK** | the groove | (see below) | stutters and repeats |
-| **GHST** | no ghost notes | some | many soft snares around the backbeat |
+| **SEED** | The style as written | A moderate variation | The furthest variation |
+| **DENS** | Very sparse (backbone only) | The style as written | Busier, adding extra hits from the complex version |
+| **CPLX** | The BASIC version of the style | STANDARD | COMPLEX |
+| **ORN** | No ornaments | Flams on loud snares and rolls closing fills | Adds ruffs plus doubled and tripled hats |
+| **BRK** | Normal groove | (see below) | Stutters and repeats |
+| **GHST** | No ghost notes | Moderate ghost notes | Frequent soft snares around the backbeat |
 
-**SEED** picks a variation of the style: `TBL` at 0 is the style as written;
-then eight bands of sixteen variations, shown `band:variant` (`1:01` ...
-`8:15`). The band says how far the variation goes (band 1 touches about one
-cell in eight, band 8 more than half), and a variation keeps its character
-from band to band, only stronger. The kick on 1 and the snares on 2 and 4
-never move. The same SEED always replays the same performance from PLAY.
+**SEED** selects a deterministic variation of the current style. `TBL` at 0
+plays the style as written; above 0 there are eight bands of sixteen
+variations, displayed as `band:variant` (`1:01` through `8:15`). The band
+controls how strongly the pattern diverges (band 1 changes roughly one cell in
+eight, while band 8 changes more than half), and a variant keeps its character
+across bands while becoming stronger. The kick on beat 1 and the snares on
+beats 2 and 4 never move. The same SEED always replays the same performance
+from PLAY.
 
-**CPLX** goes through the style's three written levels, BASIC, STANDARD and
-COMPLEX, adding the next level's hits one at a time. The screen shows where
-you are: `BAS`, `STD`, `CPX`, and in between `B>50` (half-way from BASIC to
-STANDARD) or `S>25` (a quarter of the way to COMPLEX).
+**CPLX** moves across the style's three written complexity levels (BASIC,
+STANDARD, and COMPLEX), adding the next level's hits gradually. The screen
+shows your position as `BAS`, `STD`, or `CPX`, and intermediate values such as
+`B>50` (halfway from BASIC to STANDARD) or `S>25` (a quarter of the way to
+COMPLEX).
 
-**BRK** is the break knob, made for the crossfader (lock it on a scene, see
-*Breaks on the crossfader* below). Its range is in zones:
+**BRK** is the break knob, intended for crossfader control (lock it to a scene;
+see *Breaks on the crossfader* below). Its range is divided into zones:
 
 | BRK | what happens |
 |---|---|
-| 0 | the groove |
-| 1-31 | more of the style's busier layer, a little more each step |
-| 32-63 | a fill closes every bar: half a beat at 32, one beat from 40, two from 48, a whole bar from 56. A fill of a beat or more lands on a crash on the next 1 |
-| 64-79 | slices drawn from the whole kit: the groove scrambles |
-| 80-95 | the same, half-time (one snare, on 3) |
-| 96-127 | per beat, cuts: the beat repeats the last hit as a stutter on every 16th (tighter past 112), and now and then a beat drops out (never the 1, never two in a row) |
+| 0 | Normal groove |
+| 1-31 | Gradually brings in more of the style's busier layer |
+| 32-63 | Adds a fill at the end of every bar: half a beat at 32, one beat from 40, two beats from 48, and a full bar from 56. Fills of one beat or longer land on a crash on the next beat 1 |
+| 64-79 | Draws slices from across the whole kit, scrambling the groove |
+| 80-95 | Same scramble at half-time (one snare on beat 3) |
+| 96-127 | Per-beat cuts: repeats the last hit as a 16th-note stutter (tighter past 112), occasionally dropping a beat (never beat 1, and never two in a row) |
 
-Back to 0, the groove returns exactly where it would have been.
+When you return BRK to 0, the groove resumes right where it would have been.
 
-**GHST** adds soft snares on free steps near the backbeat, from the kit's
-GHOST slices, or a soft SNARE when there are none. KIT BALANCE's SNARE row
-scales them.
+**GHST** adds soft snare hits on open steps near the backbeat, using the kit's
+GHOST slices or a soft SNARE slice if no GHOST slices exist. The SNARE row on
+KIT BALANCE scales their frequency.
 
 ### CONFIG: the style and the feel
 
@@ -115,364 +122,399 @@ scales them.
 
 | knob | 0 | towards 127 |
 |---|---|---|
-| **STYL** | | the style (its name is shown); see the list below |
-| **VEL** | every hit as loud | beats loud, off-beats soft (hats most), some chance; past half, random full accents |
-| **ALT** | always the first slice of each kind | other slices of the same kind; past half any role of the drum; near the top, now and then a neighbour (kick/tom, snare/ghost, hats/ride) |
-| **SWNG** | straight | a laid-back snare and swung hats; past half every off-16th shuffles, up to a triplet feel |
-| **HUMN** | the groove untouched | the amount of VEL, ALT, SWNG and VAR: 64 plays them as set, 127 twice as far |
-| **VAR** | the same bar every bar | fills at the end of each phrase; past half the groove changes from bar to bar and fills grow (two beats, sometimes a bar); near the top a fill at every bar's end |
+| **STYL** | | Selects the style by name (see the list below) |
+| **VEL** | Every hit at equal volume | Accents beats and softens off-beats (especially hats) with slight randomness; past halfway, adds occasional full accents |
+| **ALT** | Always uses the first slice of each drum type | Alternates among slices of the same type; past halfway uses any role of that drum; near the top occasionally borrows a neighbour (kick/tom, snare/ghost, hats/ride) |
+| **SWNG** | Straight timing | Lays back the snare and swings hats; past halfway shuffles every off-16th up to a triplet feel |
+| **HUMN** | Leaves the groove untouched | Scales the overall amount of VEL, ALT, SWNG, and VAR: 64 applies them as set, 127 doubles their depth |
+| **VAR** | Plays the same bar every bar | Adds fills at the end of each phrase; past halfway varies the groove from bar to bar with longer fills (two beats, sometimes a full bar); near the top adds a fill at the end of every bar |
 
-HUMN is the master of the humanisation: at 0, VEL, ALT, SWNG and VAR do
-nothing, and the groove plays as written. ORN and GHST are not scaled by
-HUMN.
+HUMN acts as the master humanisation depth. At 0, VEL, ALT, SWNG, and VAR have
+no effect and the groove plays strictly as written. ORN and GHST are not scaled
+by HUMN.
 
-**The styles** (STYL): BRKB breakbeat, HHOP hip-hop, FUNK, HOUS house,
-JUNG jungle, DUB one drop, AFRO afrobeat, CLAV son clave 3-2, BOSS bossa,
-BMBE bembe 12/8, ROCK, DISC disco, TECH techno, TRAP, RNB r&b / neo-soul,
-DEMB reggaeton dembow, SAMB samba, BAIA baiao, CUMB cumbia, GARA uk garage,
-DSTP dubstep, SHUF blues shuffle 12/8, SIX8 6/8 afro, ELEC electro, DEEP
-deep house, MINI minimal techno, AMAP amapiano, FTWK footwork, HILF
-highlife. Every style plays the whole kit: bells, claves, rims and shakers
-on the PERC slices, congas and the log drum on the TOM slices. A 12/8 style
-plays bars of 12 steps.
+**The styles** (STYL): `BRKB` breakbeat, `HHOP` hip-hop, `FUNK`, `HOUS` house,
+`JUNG` jungle, `DUB` one drop, `AFRO` afrobeat, `CLAV` son clave 3-2, `BOSS`
+bossa, `BMBE` bembe 12/8, `ROCK`, `DISC` disco, `TECH` techno, `TRAP`, `RNB`
+r&b / neo-soul, `DEMB` reggaeton dembow, `SAMB` samba, `BAIA` baiao, `CUMB`
+cumbia, `GARA` uk garage, `DSTP` dubstep, `SHUF` blues shuffle 12/8, `SIX8` 6/8
+afro, `ELEC` electro, `DEEP` deep house, `MINI` minimal techno, `AMAP`
+amapiano, `FTWK` footwork, and `HILF` highlife. Every style uses the full kit,
+mapping bells, claves, rims, and shakers to PERC slices and congas and log
+drums to TOM slices. Styles in 12/8 play 12-step bars.
 
 ### KIT BALANCE: the mix of the drums
 
 ![KIT BALANCE](../../img/drummer/balance.png)
 
-Six rows, one knob each: **A KICK, B SNARE** (its ghosts too), **C HATS**
-(closed and open), **D CYMB** (ride, crash), **E TOMS, F PERC**. The middle
-tick (`=`) is the style as written. Left of it the drum plays less (`-20`
-takes a fifth of its hits out, `OUT` all of them); right of it, more: first
-the hits of the style's other levels, then (past the small tick, the bar
-dotted) any free step for the light drums (hats, perc, ghosts) and the
-8ths for the others. One detent is 5 %; turning stops once on the middle.
+KIT BALANCE provides six rows, one per knob: **A KICK**, **B SNARE** (including
+ghost notes), **C HATS** (closed and open), **D CYMB** (ride and crash), **E
+TOMS**, and **F PERC**. The centre tick (`=`) plays the style as written.
+Turning left reduces how often that drum plays (`-20` drops a fifth of its
+hits; `OUT` removes all of them). Turning right adds more hits: first pulling
+from the style's busier complexity layers, and then (past the small tick, where
+the bar becomes dotted) filling open steps for lighter drums (hats, perc,
+ghosts) and 8th-note steps for the rest. Each detent changes the value by 5%,
+and turning pauses briefly at the centre tick.
 
-KIT BALANCE is saved in the Part: each Part has its own mix, and a Part
-change brings it. The track's own trigs always play.
+KIT BALANCE is stored per Part, so switching Parts loads that Part's balance.
+The track's own sequencer trigs always play regardless of KIT BALANCE.
 
-**Locks on steps and scenes.** KIT BALANCE takes parameter locks, as a
-stock page does (PAGES' locks; the remix needs EVENTS):
+**Locks on steps and scenes.** KIT BALANCE supports parameter locks just like
+stock pages (via PAGES locks; the remix also needs EVENTS):
 
-- **On a step.** GRID RECORDING on, place a trig (TRIG, or FUNC + TRIG for
-  a trigless one), hold it and turn A-F: that step locks the zone. The
-  title reads `STEP n`; a zone with a lock shows its value, the others
-  `--`. FUNC held while turning removes the lock. As on stock, the lock
-  plays from its step to the track's next trig.
-- **On a scene.** Hold SCENE A or B and turn A-F: the scene locks the
-  zone (title `SCENE n`), and the crossfader morphs between the two
-  scenes' mixes. FUNC held while turning removes it.
+- **On a step:** With GRID RECORDING enabled, place a trig (TRIG, or FUNC +
+  TRIG for a trigless trig), hold it, and turn encoders A–F to lock those drum
+  zones on that step. The title changes to `STEP n`; locked zones show their
+  value while unlocked ones show `--`. Hold FUNC while turning an encoder to
+  clear its lock. As in stock OS, the lock stays active until the track's next
+  trig.
+- **On a scene:** Hold SCENE A or B and turn encoders A–F to lock zones to that
+  scene (title `SCENE n`), allowing the crossfader to morph between the two
+  scenes' drum mixes. Hold FUNC while turning to remove a lock.
 
 ![KIT BALANCE: step 3's locks, trig 3 held](../../img/drummer/balance-step.png)
 
 ![KIT BALANCE: scene A's lock, SCENE A held](../../img/drummer/balance-scene.png)
 
-The locks follow their trigs like stock's: a trig taken off takes its
-locks, trig + PLAY clears them, and copying a trig, a track or a pattern
-carries them. They are saved with the project (`pglocks.work`). Part and
-bank operations (RELOAD PART, a Part or bank copy) do not move them yet.
+Locks behave like stock parameter locks: removing a trig removes its locks,
+pressing trig + PLAY clears them, and copying a trig, track, or pattern copies
+them along with it. They are saved with the project in `pglocks.work`. Part and
+bank operations (such as RELOAD PART, or copying a Part or bank) do not move
+them yet.
 
 ### NEXT: orders on the beat
 
 ![NEXT, an order armed](../../img/drummer/next-armed.png)
 
-NEXT gives the drummer an order, the way a band leader would: "at the next
-phrase, a triplet fill, and we stop". The order waits for the beat, bar or
-phrase you chose and plays exactly there, however early or late you turned
-the knob. The six cells sit like the knobs: A B C on top, D E F below.
+NEXT lets you queue a beat-synced command for the drummer, such as playing a
+triplet fill and stopping at the end of the next phrase. The command waits for
+the beat, bar, or phrase boundary you choose and triggers on time regardless of
+how early or late you turned the knob. The six cells match the physical knob
+layout: A, B, and C on top, D, E, and F below.
 
 | knob | what it does | values |
 |---|---|---|
-| **A WHEN** | sends the order | `--` (nothing armed), BEAT, BAR, PHRASE, 2 PHR |
-| **B RUN** | stop or come back | `--`, STOP (the track's own trigs still play), SILENT (they are silenced too); while the drummer is stopped it reads RESUME |
-| **C HOW** | how it stops or comes back | DRY, CRASH (a crash on the 1), FILL (a fill ending on the 1), FILL+CR, PICKUP (a half-beat lead-in; on a resume, then the crash) |
-| **D FILL** | the order's fill (it plays one even with B on `--`) | `--`, TRIP, 6LET, RUDI, 3:4, LONG (a whole bar) |
-| **E STYL** | another style from the 1 | `--` or a style; kept until you turn CONFIG's STYL |
-| **F BRK** | a break from the 1 | `--`, 1 BEAT, 2 BEATS, BAR (BRK's cuts), STUTTER (a bar of stutter) |
+| **A WHEN** | Arms the order for a timing boundary | `--` (nothing armed), BEAT, BAR, PHRASE, 2 PHR |
+| **B RUN** | Stop or resume playback | `--`, STOP (track's own trigs keep playing), SILENT (track's own trigs are silenced too); displays RESUME while the drummer is stopped |
+| **C HOW** | Transition into the stop or resume | DRY, CRASH (crash on beat 1), FILL (fill ending on beat 1), FILL+CR, PICKUP (half-beat lead-in; followed by a crash on resume) |
+| **D FILL** | Fill type for the order (plays even if B is `--`) | `--`, TRIP, 6LET, RUDI, 3:4, LONG (a full bar) |
+| **E STYL** | Switch to another style starting on beat 1 | `--` or any style (remains active until you turn CONFIG's STYL knob) |
+| **F BRK** | Trigger a break starting on beat 1 | `--`, 1 BEAT, 2 BEATS, BAR (BRK cuts), STUTTER (a full bar of stutter) |
 
-**A takes four detents a value and arms once the knob rests** (half a
-second): a small knock moves nothing, and turning through BEAT on the way to
-PHRASE sends PHRASE, not BEAT. **Only A comes back to `--`.**
-Set B to F once; every turn of A sends the
-same order again (STOP, then RESUME, then STOP...). A `*` marks the cells
-set and waiting for A. Turn A back to `--` before the order plays to cancel
-it.
+**Encoder A requires four detents per value and arms after a half-second pause**,
+so bumping the knob does nothing and turning past BEAT on the way to PHRASE
+arms PHRASE instead of BEAT. **Only A resets back to `--` after the order
+runs.** You can configure B through F once and trigger the same command
+repeatedly with A (for example, alternating STOP and RESUME). An asterisk (`*`)
+marks cells that are configured and waiting for A. To cancel an armed order
+before it triggers, turn A back to `--`.
 
 ![NEXT: the order set, waiting for WHEN](../../img/drummer/next-ready.png)
 
-The top of the page: the drummer's state (PLAYING, STOPPED) and what the
-armed order will do, the bar of the phrase on the right; under it the
-phrase across the whole screen, one cell a bar, filling up with the
-playhead; a mark under the place the order plays, and the beats left beside
-it. The order's values are inverted while it is armed, and blink through
-the last four beats. When it plays, the line flashes and A is back to `--`.
+The top row displays the drummer's current state (PLAYING or STOPPED), a summary
+of the armed order, and the current bar within the phrase on the right. Below
+it, a full-width phrase bar divides into one cell per bar and fills along with
+the playhead, with a marker underneath where the order will execute and the
+remaining beats shown beside it. While armed, the order's values appear inverted
+and blink during the final four beats. When the order executes, the line flashes
+and A resets to `--`.
 
 ![NEXT: the last beat before the order](../../img/drummer/next-close.png)
 
 ![NEXT: the order played, the drummer stopped](../../img/drummer/next-stopped.png)
 
-Stopped, the drummer keeps counting in silence, so a RESUME comes back in
-the groove, on the 1. A fill (C on FILL, FILL+CR or PICKUP, or D set) needs
-the order on a bar's 1: with A on BEAT in the middle of a bar, the order
-plays without its fill. The fill is as long as FILLS' LONG says (KIT window
-page 4), a beat on AUTO, a bar with D LONG.
+While stopped, the drummer keeps counting silently so RESUME brings it back in
+time on beat 1. Orders with a fill (C set to FILL, FILL+CR, or PICKUP, or D
+set) require the order to land on beat 1 of a bar; if A is set to BEAT mid-bar,
+the order executes without the fill. Fill length follows the FILLS page's LONG
+setting (KIT window page 4), defaulting to one beat on AUTO, or a full bar when
+D is set to LONG.
 
-Armed while the sequencer is stopped, an order plays on the first step:
-STOP armed before PLAY starts the pattern without the drummer, ready to come
-in on the next order. B to F are saved in the Part; A is not (an order is a
-gesture: a project always loads with nothing armed).
+If you arm an order while the sequencer is stopped, it triggers on the first
+step when playback starts. For example, arming STOP before pressing PLAY starts
+the pattern without the drummer so you can bring it in later with RESUME.
+Settings B through F are saved in the Part; A is not saved, so a project always
+loads with nothing armed.
 
 ### The KIT window
 
-Hold any **trig key** and press **BANK** (BANK alone still selects a bank).
-One row a slice, four pages: **LEFT / RIGHT** change page, **UP / DOWN**
-move from slice to slice and play it, a **trig key** jumps to that slice
-and plays it, **YES** or **NO** closes. **FUNC + RIGHT** makes the kit
-again from the sound (AUTO; asked first).
+Hold any **trig key** and press **BANK** to open the KIT window (pressing BANK
+alone still selects a bank). The window displays one slice per row across four
+pages. Use **LEFT / RIGHT** to change pages, **UP / DOWN** to step through
+slices and audition them, any **trig key** to jump directly to and audition
+that slice, and **YES** or **NO** to close. Pressing **FUNC + RIGHT** re-runs
+automatic kit analysis (AUTO) after asking for confirmation.
 
 **Page 1: what each slice is.**
 
 ![KIT window, page 1](../../img/drummer/kit-zones.png)
 
-- **A ZONE**: the drum the slice plays: KICK, SNARE, GHOST, HAT C, HAT O,
-  RIDE, CRASH, TOM, PERC, a two-drum combo (a kick and a crash hit
-  together, say), or OUT (never played as a drum).
-- **B ROLE**: ACC (accent: loud hits), NRM, SFT (soft hits). DRUMMER picks
-  the role from the hit's level: a loud snare plays an ACC snare, a soft
-  one an SFT snare.
-- **LNK** shows `=n` on slices AUTO found to be copies of slice n
-  (SIMILAR, page 3).
+- **A ZONE**: Assigns the drum role for the slice: KICK, SNARE, GHOST, HAT C,
+  HAT O, RIDE, CRASH, TOM, PERC, a two-drum combo (such as kick + crash), or
+  OUT (excluded from playback).
+- **B ROLE**: Sets the dynamic role to ACC (loud accents), NRM (normal), or SFT
+  (soft hits). DRUMMER matches each hit's velocity to the role, playing an ACC
+  snare on loud hits and an SFT snare on soft ones.
+- **LNK**: Displays `=n` on slices that AUTO detected as duplicates of slice
+  `n` (see SIMILAR on page 3).
 
 **Page 2: timing, level, scene.**
 
 ![KIT window, page 2](../../img/drummer/kit-align.png)
 
-- **A ALGN**, 0-250 ms: the slice starts that much early, so a hit that
-  sits late in its slice lands on the step. AUTO sets it when it finds the
-  hit late in the slice.
-- **B GAIN**, -24 to +6 dB: the slice's own level, on top of the hit's
-  velocity. On a linked slice, its whole group turns.
-- **E SCN**, -- or 1-16: a scene of the Part played on this slice's hits
-  only (its LFO, AMP, FX1 and FX2 locks for this track). Keep a few scenes
-  for the slices (9-16, say) and the others for the crossfader. A delay
-  send on one slice only, a filter on the open hat...
-- **F DOSE**, 5-100 %: how far towards the scene's values.
+- **A ALGN** (0–250 ms): Starts the slice early by this amount so a hit that
+  sits late inside its slice lands on the beat. AUTO sets this automatically
+  when it detects a delayed transient.
+- **B GAIN** (-24 to +6 dB): Adjusts the slice's individual level on top of hit
+  velocity. Adjusting a linked slice updates its entire linked group together.
+- **E SCN** (`--` or 1–16): Applies a Part scene's locks (for this track's LFO,
+  AMP, FX1, and FX2 parameters) only when this slice plays. For example, you
+  can reserve scenes 9–16 for per-slice effects (like a delay send on one snare
+  or a filter on the open hat) while keeping scenes 1–8 for the crossfader.
+- **F DOSE** (5–100%): Controls how strongly the slice moves toward the
+  assigned scene's parameter values.
 
 **Page 3: the track.**
 
 ![KIT window, page 3](../../img/drummer/kit-track.png)
 
-- **A SHIFT**: ON, a light hit (ghost, hat, perc) that loses a collision
-  with a louder one moves to the next free step instead of being dropped.
-- **B PHRASE**: 4 or 8 bars, the phrase VAR's fills and crashes follow.
-- **C SIMILAR**: how close two slices must sound for AUTO to call one a
-  copy of the other (OFF, 1-15; 6 by default).
-- **D COPIES**: what AUTO does with the copies: OUT (out of the kit) or
-  LINK (kept, linked: their GAIN turns together).
-- **E KIT FILE**: turn E to save the kit in a file beside the sample. The
-  next time that sample goes on a DRUMMER track, its kit loads without the
-  question.
-- **F REDRUM**: OFF, AUTO, 1, 2, 4 or 8 BARS (see *REDRUM* below). The row
-  shows what REDRUM understood of the loop, e.g. `AUTO 1BAR 16SL`.
+- **A SHIFT**: When ON, if a light hit (ghost, hat, or perc) collides with a
+  louder drum on the same step, it shifts to the next free step instead of
+  being dropped.
+- **B PHRASE**: Sets the phrase length to 4 or 8 bars for VAR fills and
+  crashes.
+- **C SIMILAR**: Sets how closely two slices must match for AUTO to treat one
+  as a copy of the other (OFF or 1–15; default is 6).
+- **D COPIES**: Chooses how AUTO handles duplicate slices: OUT removes them
+  from the kit, while LINK keeps them and links their GAIN controls together.
+- **E KIT FILE**: Turn E to save the kit to a file alongside the sample. Next
+  time you load that sample on a DRUMMER track, its kit loads automatically
+  without prompting.
+- **F REDRUM**: Selects OFF, AUTO, or 1, 2, 4, or 8 BARS (see *REDRUM* below).
+  The row displays what REDRUM detected for the loop, such as `AUTO 1BAR 16SL`.
 
-SIMILAR and COPIES act at the next AUTO. The kit, GAIN, ALIGN, SCENE,
-DOSE and the page 3 settings are saved with the project, per track.
+Changes to SIMILAR and COPIES take effect the next time you run AUTO. The kit
+assignments, GAIN, ALIGN, SCENE, DOSE, and page 3 settings are all saved per
+track with the project.
 
 **Page 4: FILLS, the fills' vocabulary.**
 
 ![KIT window, page 4](../../img/drummer/kit-fills-set.png)
 
-Six choices, each AUTO first (AUTO lets the style, VAR and ORN decide). A
-filled box marks a choice made by hand:
+Page 4 has six fill parameters, all defaulting to AUTO so the style, VAR, and
+ORN knobs decide automatically. A filled box indicates a manual override:
 
 | knob | choices |
 |---|---|
-| **A FILL** | the kind of every fill: WRIT (the style's written fill), RUDI (drum rudiments), TRIP (triplets), 3:4 (groups of three over four) |
-| **B FREQ** | when: AUTO (BRK's fills, and VAR's), BRK (only when BRK asks), 2BAR (BRK's, every second bar), PHRS (BRK's, at the phrase's end) |
-| **C LONG** | how long: AUTO (BRK's zone says), 1BT, 2BT, BAR |
-| **D STIK** | one sticking of the kind chosen in A (`--` while A is AUTO or WRIT) |
-| **E ORCH** | which drums: TOMS (right hand round the toms, left on the snare), SNR (all on the snare), SWAP |
-| **F TRIP** | triplets: 8TH (8th triplets), 6LET (sextuplets), 8>6 (8ths turning into sextuplets on the last beat). Set while A is AUTO, the fills become triplets |
+| **A FILL** | Fill type: WRIT (the style's written fill), RUDI (drum rudiments), TRIP (triplets), or 3:4 (groups of three over four) |
+| **B FREQ** | When fills trigger: AUTO (both BRK and VAR fills), BRK (only when BRK requests one), 2BAR (BRK fills every second bar), or PHRS (BRK fills at the end of a phrase) |
+| **C LONG** | Fill length: AUTO (follows BRK's zone), 1BT, 2BT, or BAR |
+| **D STIK** | Selects a specific sticking for the fill type chosen in A (shows `--` while A is AUTO or WRIT) |
+| **E ORCH** | Orchestration across drums: TOMS (right hand around the toms, left on the snare), SNR (all on the snare), or SWAP |
+| **F TRIP** | Triplet subdivision: 8TH (8th-note triplets), 6LET (sextuplets), or 8>6 (8ths accelerating to sextuplets on the last beat). Setting this while A is AUTO forces triplet fills |
 
-The stickings (D): rudiments SNGL single stroke, DBLE double stroke, PARA
-paradiddle, INVP inverted paradiddle, PDDL paradiddle-diddle, SIXS
-six-stroke roll, DPAR double paradiddle, LIN3 / LIN4 linear with the kick,
-FTAP flam tap, DRAG single drag tap, RTMQ ratamacue, FIVE five-stroke roll;
-triplets TRPL single stroke, RLL, SIXS six-stroke, PDDL paradiddle-diddle,
-LIN linear, SWIS Swiss army triplet, FACC flam accent; 3:4 TSS
-(tom snare snare), LIN, KSS (kick snare snare), FSS (flam snare snare).
+Available stickings on **D**:
+- Rudiments: `SNGL` single stroke, `DBLE` double stroke, `PARA` paradiddle,
+  `INVP` inverted paradiddle, `PDDL` paradiddle-diddle, `SIXS` six-stroke roll,
+  `DPAR` double paradiddle, `LIN3` / `LIN4` linear with kick, `FTAP` flam tap,
+  `DRAG` single drag tap, `RTMQ` ratamacue, `FIVE` five-stroke roll.
+- Triplets: `TRPL` single stroke, `RLL`, `SIXS` six-stroke, `PDDL`
+  paradiddle-diddle, `LIN` linear, `SWIS` Swiss army triplet, `FACC` flam
+  accent.
+- 3:4: `TSS` (tom snare snare), `LIN`, `KSS` (kick snare snare), `FSS` (flam
+  snare snare).
 
-FILLS is saved in the Part, like KIT BALANCE. Changed while the pattern
-plays, the next fill takes it. For one fill different from these, use NEXT's
-D FILL.
+FILLS settings are saved per Part, just like KIT BALANCE. Changes made during
+playback apply on the next fill. To trigger a one-off fill that differs from
+these settings, use NEXT's D FILL knob.
 
 ## How a kit is made
 
-**AUTO** listens to each slice: how much low end, how much high end, how
-long it rings. A lot of low end is a kick; high end and little low a hat
-(open when it holds); a ring of a second or more a cymbal; some highs over
-less low end a snare (a soft one a ghost); a lower ring a tom; anything else
-a perc. Within each drum, the loudest slices become ACC and the softest
-SFT. AUTO is a proposal: correct a zone in the KIT window, page 1, and it
-plays at once.
+**AUTO** analyses each slice's low-frequency energy, high-frequency energy, and
+decay length. Heavy low end is classified as a kick; bright highs with little
+low end become a hat (open if it sustains); a ring lasting a second or more
+becomes a cymbal; midrange/high energy over moderate low end becomes a snare
+(or a ghost if soft); a lower resonant decay becomes a tom; everything else is
+assigned to perc. Within each drum zone, the loudest slices are marked ACC and
+the softest SFT. AUTO is a starting point: if a slice is misclassified, change
+its zone on KIT window page 1 and the change takes effect immediately.
 
-**SIMILAR.** A loop often hits the same sound many times (a two-bar loop
-whose second bar repeats the first). AUTO spots the copies and keeps one
-of each: with COPIES on OUT the others leave the kit (the toast says
-`5 SIMILAR OUT`), with LINK they stay and are linked. A copy 6 dB softer or
-more is kept as an SFT.
+**SIMILAR.** Drum loops often repeat the same sound several times (for example,
+a two-bar loop whose second bar repeats the first). AUTO detects these copies
+and keeps one of each. With COPIES set to OUT, duplicate slices are removed
+from the kit (the toast reports e.g. `5 SIMILAR OUT`); with LINK, they stay in
+the kit and share a linked gain group. A duplicate that is 6 dB softer or more
+is kept separately as an SFT hit.
 
-**Collisions.** A track plays one slice at a time. When the groove asks for
-two drums on one step, a combo slice holding exactly those two plays; else
-the drum first in the priority (kick first, then snare, then the others).
+**Collisions.** Because a FLEX track plays one slice at a time, DRUMMER must
+resolve steps where the groove calls for two drums simultaneously. If the kit
+contains a combo slice matching those exact two drums, that slice plays;
+otherwise the higher-priority drum wins (kick first, then snare, then the other
+zones).
 
 ## REDRUM: your loop as the groove
 
-With REDRUM on, DRUMMER places every slice where it falls in your loop
-(its place off the 16th kept, so the feel survives) and that loop becomes
-the groove. **HUMN 0, SEED 0, CPLX 64** replays the loop as it is, each step
-its own slice. Then the knobs bend it:
+With REDRUM enabled, DRUMMER places each slice at its original position in your
+loop (preserving its micro-timing off the 16th-note grid so the loop's feel
+stays intact) and uses that loop as the groove. Setting **HUMN 0, SEED 0, CPLX
+64** replays the loop exactly as recorded, using each step's original slice.
+From there, the knobs reshape it:
 
 | knob | under REDRUM |
 |---|---|
-| ALT (with HUMN) | now and then a slice is swapped for another of the same drum: the re-drum |
-| SEED | moves, empties and fills hits, as on a style |
-| DENS | thins the loop below 64 (the backbone kept) |
-| CPLX | 0: the loop without its soft slices and ghosts; 64: the loop; 127: the loop plus the style's COMPLEX hits on the steps the loop leaves free (the loop's own hits never lose) |
-| GHST, VAR, ORN, BRK, VEL | as on a style: ghosts, changing bars, ornaments, fills and breaks, dynamics |
-| STYL | gives its fills (and their colour), not its groove, swing or lay-back: the loop has its own |
-| KIT BALANCE | as on a style, per drum |
+| ALT (with HUMN) | Occasionally swaps a slice for another slice of the same drum (the re-drum effect) |
+| SEED | Moves, removes, and adds hits just as in style mode |
+| DENS | Below 64, thins out the loop while keeping the backbone |
+| CPLX | 0 plays the loop without soft hits or ghosts; 64 plays the loop as-is; 127 layers the selected style's COMPLEX hits onto steps the loop leaves empty (never overwriting the loop's own hits) |
+| GHST, VAR, ORN, BRK, VEL | Same as in style mode: ghost notes, bar-to-bar variations, ornaments, fills, breaks, and dynamics |
+| STYL | Supplies fill patterns and character only, without replacing the loop's own groove, swing, or lay-back |
+| KIT BALANCE | Same as in style mode, per drum group |
 
-Slices that SIMILAR put OUT of the kit still play on their own steps, as
-they are (KIT BALANCE and SEED do not reach them); with COPIES on LINK they
-stay in their drum and every knob reaches them.
+Slices that SIMILAR set to OUT still play on their original steps as recorded,
+though KIT BALANCE and SEED do not affect them. With COPIES set to LINK, they
+stay assigned to their drum group so every knob affects them.
 
-**How long is the loop?** REDRUM needs the loop's length in bars to lay it
-on the steps. On **AUTO** it reads the slot's attributes (its length in bars,
-else its tempo) and takes the nearest of 1, 2, 4 or 8 whole bars. A slot
-that never had its own tempo takes the project's, which can make a 150 BPM
-loop read as 6.4 bars at 120: AUTO rounds it to 8. When the row shows the
-wrong number of bars, **set it by hand**: 1, 2, 4 or 8 BARS on F. A forced
-length ignores the slot's tempo, so the loop follows the project at any
-tempo.
+**How long is the loop?** REDRUM needs to know the loop's length in bars to map
+slices onto steps. In **AUTO** mode, it reads the sample slot's attributes (bar
+length if present, otherwise tempo) and rounds to the nearest of 1, 2, 4, or 8
+bars. A slot without its own tempo inherits the project tempo, which can cause
+a 150 BPM loop to read as 6.4 bars at 120 BPM and round to 8 bars. If the row
+shows the wrong bar count, **set it manually** to 1, 2, 4, or 8 BARS with
+encoder F. A manual bar length ignores the slot's tempo, so the loop tracks the
+project at any tempo.
 
-A loop longer than the pattern simply goes on: a 4-bar loop on a 16-step
-pattern plays its four bars over four passes.
+If a loop is longer than the pattern, it continues across pattern cycles: a
+4-bar loop on a 16-step pattern plays all four bars over four passes of the
+pattern.
 
 ## Configurations
 
-**A steady groove for a song.** CONFIG: the style, HUMN 0. LIVE: SEED 0,
-DENS 64, CPLX 64, BRK 0. Every bar the same, the style as written.
+**A steady groove for a song.** On CONFIG, pick your style and set HUMN to 0.
+On LIVE, set SEED to 0, DENS to 64, CPLX to 64, and BRK to 0. Every bar plays
+identically, straight from the written style.
 
-**A human drummer.** HUMN 64, VEL 64, SWNG 40-70, ALT 40. Add VAR 40 for
-fills at the phrase's end, ORN 32 for flams and rolls, GHST 40.
+**A human drummer.** Set HUMN to 64, VEL to 64, SWNG to 40–70, and ALT to 40.
+Add VAR around 40 for phrase-end fills, ORN around 32 for flams and rolls, and
+GHST around 40 for ghost notes.
 
-**More and less.** DENS and CPLX are the two "busier" knobs: CPLX walks
-through the written levels (more parts, more syncopation), DENS thins or
-fills at random around them. A breakdown: DENS 20. A peak: CPLX 127,
-DENS 90.
+**More and less.** DENS and CPLX both control busyness in different ways: CPLX
+steps through the written pattern layers (adding parts and syncopation), while
+DENS thins or adds hits randomly around them. Try DENS 20 for a breakdown, or
+CPLX 127 and DENS 90 for a peak.
 
-**Breaks on the crossfader.** Put BRK on a scene: hold SCENE B, turn BRK
-to 56 (a bar of fill) or 110 (stutters); SCENE A keeps BRK 0. The
-crossfader then takes the drummer from the groove to the break and back,
-and a fill of a beat or more lands on a crash.
+**Breaks on the crossfader.** Lock BRK to a scene: hold SCENE B and turn BRK to
+56 (for a one-bar fill) or 110 (for stutters), while keeping BRK at 0 on SCENE
+A. Moving the crossfader moves smoothly from the groove into the break and back,
+with fills of a beat or more landing on a crash.
 
-**Fills only where you want them.** KIT window page 4 (FILLS): FREQ on BRK (no fill unless BRK
-asks), LONG 1BT; then a scene with BRK 40 on the crossfader gives a one-beat
-fill on demand. FREQ 2BAR or PHRS: every second bar, or at the phrase's
-end.
+**Fills only where you want them.** On KIT window page 4 (FILLS), set FREQ to
+BRK (so fills only occur when BRK requests them) and LONG to 1BT. Locking BRK
+to 40 on a scene gives you a one-beat fill on demand with the crossfader. You
+can also set FREQ to 2BAR or PHRS to restrict fills to every second bar or the
+end of each phrase.
 
-**Triplet fills.** KIT window page 4 (FILLS): TRIP 6LET (sextuplets), FILL on AUTO or TRIP.
+**Triplet fills.** On KIT window page 4 (FILLS), set TRIP to 6LET (sextuplets)
+and leave FILL on AUTO or set it to TRIP.
 
-**An ending.** NEXT: B STOP, C FILL+CR, D LONG. Near the end of the song
-turn A to PHRASE: a bar of fill, a crash on the next phrase's 1, then
-silence. A to PHRASE again (B now reads RESUME), C PICKUP: the drummer comes
-back in on a lead-in and a crash.
+**An ending.** On NEXT, set B to STOP, C to FILL+CR, and D to LONG. Near the
+end of the song, turn A to PHRASE to play a full-bar fill, hit a crash on the
+next phrase's beat 1, and stop. To bring the drummer back in, set C to PICKUP
+and turn A to PHRASE again (B now reads RESUME) for a lead-in and crash.
 
-**Drop the drums for a bar.** NEXT: B STOP, C DRY. A BAR stops on the next
-bar; A BAR again brings it back on the one after. With B SILENT the
-track's own trigs stop too.
+**Drop the drums for a bar.** On NEXT, set B to STOP and C to DRY. Turn A to
+BAR to stop on the next bar, then turn A to BAR again to come back in on the
+following bar. Set B to SILENT instead if you also want to mute the track's own
+trigs.
 
-**Change style on the phrase.** NEXT: E to the next style, B `--`. A PHRASE:
-the new style from the phrase's 1; turning CONFIG's STYL gives the knob
-back.
+**Change style on the phrase.** On NEXT, set E to the new style and leave B on
+`--`, then turn A to PHRASE. The new style starts on beat 1 of the next phrase
+and stays active until you turn CONFIG's STYL knob again.
 
-**One slice, one effect.** KIT window page 2: give the open hat SCN 9, and
-on scene 9 lock the track's filter; the open hat plays filtered, the rest
-untouched. A delay send on the snare alone, a pitch on the toms...
+**One slice, one effect.** On KIT window page 2, assign SCN 9 to the open hat
+slice, then lock the track's filter on scene 9. Only the open hat plays through
+that filter setting, leaving the rest of the kit untouched. You can use the
+same trick for a delay send on the snare alone or a pitch shift on the toms.
 
-**Two drummers.** Two DRUMMER tracks on the same loop, different SEEDs or
-styles, one with KIT BALANCE keeping kick and snare, the other hats and
-perc.
+**Two drummers.** Put two DRUMMER tracks on the same sliced loop with different
+SEEDs or styles, then use KIT BALANCE so one track plays mainly kick and snare
+while the other plays hats and percussion.
 
-**Your own kit from one-shots.** A computer tool beside the module
-(the kit maker) turns a folder of single hits
-into one sliced sample with its kit file, ready for the card.
+**Your own kit from one-shots.** The companion kit-maker tool beside the module
+turns a folder of one-shot samples into a single sliced sample and matching kit
+file ready to copy onto the CF card.
 
 ## Tutorial 1: a drummer from a sliced loop
 
-You need a drum loop of one or two bars on the card.
+You will need a one- or two-bar drum loop on your CF card.
 
-1. **Load and slice.** On track 1, load the loop on a FLEX machine. AED
-   (audio editor), SLICE: *create slice grid*, 16 slices for one bar (32
-   for two bars). Check that each slice starts on a hit.
-2. **Make it a drummer.** FUNC + SRC, scroll to **DRUMMER**, **YES**, then
-   **NO** to close. To *This track has no kit yet* answer **YES**: the
-   toast says how many slices it sorted.
-3. **Check the kit.** Hold trig 1, press **BANK**: the KIT window, page 1.
-   UP / DOWN plays each slice with its zone. A hat called a perc? Turn A
-   to HAT C. Close with **NO**.
-4. **Pick a style.** FUNC + SRC (CONFIG), turn **STYL** to FUNK. HUMN 0.
-   **PLAY**: a straight funk groove with your loop's sounds.
-5. **Shape it.** SRC (LIVE). CPLX 0: the simplest funk; 127: the busiest.
-   DENS 30: sparse. Back to 64 and 64. Turn **SEED** slowly: each value is
-   another drummer's take on the same style; `TBL` is the book.
-6. **Make it breathe.** CONFIG: HUMN 64, VEL 70, SWNG 50, ALT 40. LIVE:
-   GHST 50, ORN 32. Now the snare lays back, the hats swing, ghosts and
-   flams come in.
-7. **Mix the drums.** SRC again (KIT BALANCE). Hats to `-40`, kick to
-   `+20`. KIT window page 4 (FILLS): FILL RUDI, ORCH TOMS.
-8. **Breaks.** Hold SCENE B and turn BRK to 56 on LIVE; let go. Hold
-   SCENE A, BRK 0. Move the crossfader towards B near the end of a bar: a
-   tom fill, landing on a crash. Further on a second scene, BRK 110:
-   stutters.
-9. **Stop on the phrase.** SRC again (NEXT): B STOP, C FILL+CR. Turn A
-   to PHRASE: the countdown runs, a fill, a crash on the 1, silence. Turn
-   A to PHRASE again: the drummer is back on the next phrase.
-10. **Save.** SAVE PROJECT keeps the kit, the knobs, KIT BALANCE, FILLS and
-   NEXT's orders.
-   KIT window page 3, E: the kit file, so this loop never needs the
-   question again.
+1. **Load and slice.** Load the loop onto track 1 with a FLEX machine. Open the
+   audio editor (AED), go to SLICE, and run *create slice grid* with 16 slices
+   for one bar (or 32 for two bars). Check that each slice starts cleanly on a
+   hit.
+2. **Make it a drummer.** Press FUNC + SRC, scroll to **DRUMMER**, press
+   **YES**, and press **NO** to close. When prompted with *This track has no
+   kit yet*, press **YES**. A toast reports how many slices AUTO sorted.
+3. **Check the kit.** Hold trig 1 and press **BANK** to open page 1 of the KIT
+   window. Use UP and DOWN to audition each slice and check its assigned zone.
+   If a hi-hat was labelled as PERC, turn encoder A to HAT C. Close with
+   **NO**.
+4. **Pick a style.** Press FUNC + SRC to open CONFIG, set **STYL** to FUNK, and
+   set HUMN to 0. Press **PLAY** to hear a straight funk groove played with
+   your loop's sounds.
+5. **Shape it.** Press SRC to open LIVE. Turn CPLX to 0 for the simplest funk
+   pattern and 127 for the busiest, or turn DENS to 30 for a sparse groove,
+   then return both to 64. Slowly turn **SEED**: each value gives a different
+   variation on the style, while `TBL` returns to the written pattern.
+6. **Make it breathe.** On CONFIG, set HUMN to 64, VEL to 70, SWNG to 50, and
+   ALT to 40. On LIVE, set GHST to 50 and ORN to 32. The snare now lays back,
+   the hats swing, and ghost notes and flams enter the groove.
+7. **Mix the drums.** Press SRC again for KIT BALANCE. Turn hats down to `-40`
+   and kick up to `+20`. Open KIT window page 4 (FILLS) and set FILL to RUDI
+   and ORCH to TOMS.
+8. **Breaks.** On LIVE, hold SCENE B and turn BRK to 56, then release. Hold
+   SCENE A and ensure BRK is 0. Moving the crossfader toward B near the end of
+   a bar triggers a tom fill landing on a crash. You can set another scene to
+   BRK 110 for stutters.
+9. **Stop on the phrase.** Press SRC again to open NEXT, then set B to STOP and
+   C to FILL+CR. Turn A to PHRASE: the countdown runs, plays a fill and a crash
+   on beat 1, and stops. Turn A to PHRASE again to bring the drummer back on
+   the next phrase.
+10. **Save.** Run SAVE PROJECT to store the kit, knobs, KIT BALANCE, FILLS, and
+    NEXT settings. You can also turn encoder E on KIT window page 3 to save a
+    kit file beside the sample so the loop loads its kit automatically next
+    time.
 
 ## Tutorial 2: REDRUM, re-drum your break
 
-You need a loop whose groove you like, sliced one hit a slice.
+You will need a loop whose groove you like, sliced with one hit per slice.
 
-1. **Set up** as in tutorial 1, steps 1-3 (load, slice, DRUMMER, AUTO
-   YES). For a loop with many repeated hits, set page 3's COPIES to LINK
-   *before* AUTO (or press FUNC + RIGHT in the KIT window to redo it), so
-   every slice stays in its drum.
-2. **Turn REDRUM on.** KIT window, page 3 (RIGHT twice), turn **F** once:
-   `AUTO 1BAR 16SL`. Check the bars: a one-bar loop must read 1BAR, a
-   two-bar loop 2BAR. Wrong? Turn F on to the right number of bars.
+1. **Set up** as in Tutorial 1, steps 1–3 (load, slice, choose DRUMMER, and
+   accept AUTO). If the loop has many repeated hits, set COPIES on page 3 to
+   LINK *before* running AUTO (or press FUNC + RIGHT in the KIT window to
+   re-run AUTO) so every slice stays active in its drum group.
+2. **Turn REDRUM on.** Open the KIT window, press RIGHT twice to reach page 3,
+   and turn **F** once to enable `AUTO 1BAR 16SL`. Verify the bar count: a
+   one-bar loop should read `1BAR` and a two-bar loop `2BAR`. If it is wrong,
+   keep turning F to set the exact number of bars.
 
    ![REDRUM on, page 3](../../img/drummer/redrum.png)
 
-3. **Hear the loop itself.** CONFIG: HUMN 0. LIVE: SEED 0, CPLX 64,
-   DENS 64, BRK 0, GHST 0, ORN 0. **PLAY**: your loop, slice by slice, as it
-   was played, now following the project's tempo.
-4. **Re-drum it.** CONFIG: HUMN 64, ALT 60: now and then a snare is
-   another snare, a kick another kick. LIVE: turn SEED: hits move, drop
-   out, appear, always the loop's sounds.
-5. **Thin and thicken.** CPLX 0: the loop without its ghosts and soft
-   hits, a stripped break. CPLX 127 with STYL HOUS: the loop plus house
-   hats on the steps it leaves free. DENS 30: a sparse version.
-6. **Fills and breaks.** STYL picks the fills' colour (ROCK, FUNK,
-   JUNG...). KIT page 4 (FILLS): TRIP 6LET for sextuplet fills. Put BRK 56 on a scene
-   for a bar of fill on the crossfader, BRK 110 for stutters; a fill lands
-   on a crash.
-7. **Feel.** VEL 60 brings dynamics back on the beats; GHST 40 adds ghost
-   notes the original never had.
-8. **Back to the source.** HUMN 0, SEED 0, CPLX 64: the original loop
-   again. REDRUM is a setting per track, saved with the project; OFF gives
-   the style back.
+3. **Hear the loop itself.** Set CONFIG HUMN to 0, and on LIVE set SEED 0, CPLX
+   64, DENS 64, BRK 0, GHST 0, and ORN 0. Press **PLAY** to hear your original
+   loop played back slice by slice at the project's tempo.
+4. **Re-drum it.** On CONFIG, set HUMN to 64 and ALT to 60 so snares and kicks
+   occasionally swap with other slices of the same drum. On LIVE, turn SEED to
+   shift, drop, and add hits using the loop's own sounds.
+5. **Thin and thicken.** Set CPLX to 0 to strip away ghosts and soft hits, or
+   set CPLX to 127 with STYL set to HOUS to add house hats on empty steps. Turn
+   DENS down to 30 for a sparser pattern.
+6. **Fills and breaks.** STYL chooses the style of fills (ROCK, FUNK, JUNG, and
+   so on). On KIT page 4 (FILLS), set TRIP to 6LET for sextuplet fills. Lock
+   BRK to 56 on a scene for a full-bar fill on the crossfader, or 110 for
+   stutters; fills land on a crash.
+7. **Feel.** Turn VEL to 60 to add beat dynamics, and GHST to 40 to introduce
+   ghost notes that were not in the original loop.
+8. **Back to the source.** Return HUMN to 0, SEED to 0, and CPLX to 64 to hear
+   the original loop again. REDRUM is saved per track with the project; turning
+   it OFF returns the track to style mode.

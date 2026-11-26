@@ -1,13 +1,8 @@
-A TB-303 voice as a track machine, shown as BLKPYRAMD: on the DSP in 24-bit
-fixed point with its filter 4× oversampled at 176.4 kHz, built on Robin
-Schmidt's Open303 and recalibrated on the TB-303's own circuit against
-recordings of a real 303. One voice per DSP core (one on T1–T4, one on
-T5–T8), ahead of the track's stock AMP, FX1 and FX2.
+BLKPYRAMD is a TB-303 synthesizer voice implemented as a track machine. It runs on the DSP in 24-bit fixed point with a 4× oversampled filter at 176.4 kHz, based on Robin Schmidt's Open303 and calibrated against the TB-303 circuit and hardware recordings. You can run one voice per DSP core (one on tracks T1–T4 and one on tracks T5–T8), routed ahead of the track's stock AMP, FX1, and FX2 stages.
 
 ## Access
 
-BLKPYRAMD is the sixth row of a track's machine list: double-tap the track,
-or [FUNC] + [SRC] > MACHINE.
+BLKPYRAMD appears as the sixth entry in a track's machine list. Double-tap the track key, or press [FUNC] + [SRC] and open MACHINE.
 
 ![SRC SETUP with BLKPYRAMD: WAVE, TUNE, SLID, GATE, VOL.](../../img/blackpyramids-303/setup.png)
 
@@ -15,46 +10,33 @@ or [FUNC] + [SRC] > MACHINE.
 
 ![BLKPYRAMD source controls: PTCH, CUT, RES, ENV, DEC, ACC.](../../img/blackpyramids-303/source.png)
 
-The brackets above the knobs pair CUT with RES and DEC with ACC, the knobs
-that shape the filter sweep together.
+The brackets above the knobs group CUT with RES and DEC with ACC to show which pairs shape the filter sweep together.
 
 | Page | Knob | What it does |
 |---|---|---|
-| SRC | PTCH | the note, C0–C8 by name; [FUNC] + turn steps by octaves |
-| SRC | CUT | filter cutoff: 0–100 the real 303's whole range, evenly; 101–127 one octave beyond (to about 3.2 kHz), where the top of RES is eased |
-| SRC | RES | filter resonance, the real 303's range; every step adds as much |
-| SRC | ENV | filter envelope amount (env mod), the real 303's range |
-| SRC | DEC | filter envelope decay, 50 ms to 2 s |
-| SRC | ACC | the accent scale for the steps you accent: 127 = each lock's amount (the real 303's full accent), 0 = no accents; every step adds as much |
-| SETUP | WAVE | saw (0) to square (127), a continuous blend at equal loudness |
-| SETUP | TUNE | A4 = 400–480 Hz; 64 is 440 Hz |
-| SETUP | SLID | slide time, 0–198 ms; the default 73 is the 303's slide |
-| SETUP | GATE | note length, (GATE + 1)/128 of a step; the default 74 is the 303's gate |
-| SETUP | VOL | 0 off; 1–64 clean; 65–127 driven into a soft clip, rising smoothly to about +7 dB (the default 99: about +5 dB) |
+| SRC | PTCH | Note pitch (C0–C8 by name); hold [FUNC] while turning to step by octaves |
+| SRC | CUT | Filter cutoff: 0–100 covers the full TB-303 range evenly; 101–127 extends one octave higher (to about 3.2 kHz), where maximum resonance is slightly reduced |
+| SRC | RES | Filter resonance across the TB-303's range, scaled linearly |
+| SRC | ENV | Filter envelope modulation depth across the TB-303's range |
+| SRC | DEC | Filter envelope decay time (50 ms to 2 s) |
+| SRC | ACC | Accent scaling for accented steps: 127 applies each lock's full accent amount (matching a real TB-303), 0 disables accents, scaled linearly |
+| SETUP | WAVE | Continuous equal-loudness blend from saw (0) to square (127) |
+| SETUP | TUNE | Master tuning (A4 = 400–480 Hz; 64 is 440 Hz) |
+| SETUP | SLID | Slide time (0–198 ms; default 73 matches the TB-303) |
+| SETUP | GATE | Note length, calculated as (GATE + 1)/128 of a step (default 74 matches the TB-303) |
+| SETUP | VOL | Output level: 0 is silent, 1–64 is clean, and 65–127 drives into soft clipping up to about +7 dB (default 99 is about +5 dB) |
 
 ## Playing it
 
-- A trig plays a note with the knobs at that step. P-lock PTCH for a
-  melody and ACC for an accent.
-- A slide trig glides to its note without a retrigger. Trigless locks and
-  trigless trigs right after a note tie it.
-- Accents in a row stack into the 303's rising sweep.
-- Live: the track key, the chromatic keys (four octaves of absolute notes,
-  [PAGE] the 17th) and MIDI notes play while held. TRIG + YES previews a
-  step.
-- SLOTS and SLICES have nothing to play here: their LEDs stay dark.
+- Each trig plays a note using the current knob settings for that step. Use parameter locks on PTCH for melodies and on ACC for accents.
+- Slide trigs glide smoothly to the target note without retriggering the envelope. Placing trigless locks or trigless trigs immediately after a note ties it across steps.
+- Consecutive accented steps stack into the characteristic rising 303 accent sweep.
+- You can play notes live while holding the track key, the chromatic trig keys (spanning four octaves of absolute notes, with [PAGE] as the 17th key), or incoming MIDI notes. Press TRIG + YES to preview a step.
+- SLOTS and SLICES modes do not apply to this machine, so their LEDs remain off.
 
 ## Notes
 
-- The track is a FLEX track underneath: a stock OS opens the project with
-  it as FLEX, and FLEX's own values come back when the track leaves the
-  machine.
-- Like any machine, BLKPYRAMD keeps its knobs when the track switches to
-  another machine and back. On another machine's track, its row in
-  [FUNC] + [SRC] shows and edits those kept SETUP values.
-- The voice takes SPRING REV's place on the DSP, so SPRING REV is not in a
-  remix with it. A Part that still names SPRING REV shows its page and
-  passes audio through.
-- Beside SCALE QUANTIZER, a BLKPYRAMD track keeps its four chromatic octaves
-  and its keyboard picture; every other track's keys follow the quantizer.
-  That pairing has not been flashed.
+- Underneath, a BLKPYRAMD track is stored as a FLEX track. Stock OS opens the project with the track set to FLEX, and switching the track back to another machine restores its FLEX values.
+- Like other machines, BLKPYRAMD retains its parameter values when you switch a track to another machine and back. Even while another machine is active on the track, highlighting BLKPYRAMD in [FUNC] + [SRC] lets you view and edit its saved SETUP parameters.
+- Because the synth engine uses SPRING REV's DSP memory slot, SPRING REV is unavailable in remixes that include BLKPYRAMD. Any Part that still references SPRING REV shows its parameter page but passes audio through dry.
+- When paired with SCALE QUANTIZER, a BLKPYRAMD track retains its four chromatic octaves and keyboard layout while other tracks follow the quantizer. That pairing has not yet been tested on hardware.

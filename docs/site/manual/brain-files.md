@@ -1,12 +1,19 @@
-BRAIN keeps its settings, defaults and templates on the CF card, and creates its folder and files when it needs them.
+BRAIN stores its settings, defaults, and templates on the CF card, creating the
+required folders and files automatically as needed.
 
-| Where | What |
+| Location | Contents |
 |---|---|
-| `BRAIN/` at the card root | settings, saved defaults and templates shared by every project |
-| `brain.work`, `brain.strd` in a project folder | that project's settings |
+| `BRAIN/` at the CF card root | Global settings, saved effect defaults, and templates shared across all projects |
+| `brain.work`, `brain.strd` inside a project folder | Per-project BRAIN settings |
 
-Each pair has a working copy (`.work`) and the last saved one (`.strd`). A damaged working copy falls back to the saved one; if both are damaged, the image's own defaults are used and nothing is overwritten.
+Each file comes in a pair: a working copy (`.work`) and the last saved copy
+(`.strd`). If the working copy is damaged, BRAIN falls back to the saved copy.
+If both are damaged, BRAIN uses the firmware's built-in defaults without
+overwriting your files.
 
-At project load and power-up, effects start with the image's own defaults, then take any valid defaults you saved on the card. **SAVE FX DEFAULT** stores the current FX page. **SAVE PROJECT** updates the saved copy.
+When you power on the unit or load a project, effects start with the firmware's
+built-in defaults and then apply any valid defaults saved on your CF card.
+**SAVE FX DEFAULT** writes the current FX page defaults, and **SAVE PROJECT**
+updates the `.strd` backup copy.
 
-Back these files up with the rest of the card.
+Back up these files along with the rest of your CF card.

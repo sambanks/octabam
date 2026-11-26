@@ -1,172 +1,187 @@
 # Composing a remix
 
-A remix is a selection of modules: which effects the unit's FX1 and FX2
-choosers list, in which order, and which firmware mods ride along. Write
-`remixes/<name>/remix.py` by hand, then build and flash it as in
+A remix defines which modules are included in a firmware image, along with which
+effects appear in the FX1 and FX2 menus and in what order. Write a
+`remixes/<name>/remix.py` file, then build and flash it using
 [BUILDING.md](BUILDING.md) sections 3–6.
 
 ## Setup
 
-[BUILDING.md sections 0–2](BUILDING.md#0-what-you-need) first: the Xcode Command
-Line Tools, Homebrew, Python 3.10+, `brew install cmake uv`, then
-`make setup` and `make os && make recon`. Every image starts from
-`out/raw/section_3_MAIN_OS.bin` and is assembled with `dsp_asm`.
+Follow [BUILDING.md sections 0–2](BUILDING.md#0-what-you-need) first to install
+the toolchain (Xcode Command Line Tools, Homebrew, Python 3.10+, `cmake`, `uv`),
+run `make setup`, and unpack your stock OS with `make os && make recon`. Every
+build reads `out/raw/section_3_MAIN_OS.bin` and assembles DSP code with
+`dsp_asm`.
 
 ## What costs what
 
-Rows are not the currency; words are. A chooser row costs no words (seven
-fit in place, up to 32 in the long cave), and a stock effect on either menu
-costs nothing: its code is already in the image. The budget is per payload
-(two regions, the same effects at different addresses; `SPEC=1` puts each
-server on its own), reported from the build's own figures. An overrun
-arrives as the build's refusal, naming the payload: `payload B: SPECTRUM
-overruns the region (3599 > 2724 words)`.
+The limiting resource for DSP effects is program word count, not menu rows.
+Adding a chooser row costs zero DSP words (seven rows fit in place, and up to 32
+fit in the extended cave), and listing a stock effect costs nothing because its
+code is already present in the OS image. DSP space is budgeted per payload:
+payload A and payload B hold the same effects at different addresses, except
+under `SPEC=1`, which puts each bus server on its own core. If your selection
+exceeds a payload's available space, the build stops with an error naming the
+payload, for example:
+`payload B: SPECTRUM overruns the region (3599 > 2724 words)`.
 
-Costs in payload A, in words: Send 262, Euclid 362 (+33
-table), MiniVerb 457, Character 999 (+51), Spectrum 1,346
-(+54), Modulation 1,481 (+148), BusVerb 2,035 (+194 LFO lines and
-table), BusDelay 1,437 (+60, payload B).
+Payload A word costs for built-in modules:
 
-The build refuses these cases by name:
+- Send: 262
+- Euclid: 362 (+33 table)
+- MiniVerb: 457
+- Character: 999 (+51)
+- Spectrum: 1,346 (+54)
+- Modulation: 1,481 (+148)
+- BusVerb: 2,035 (+194 LFO lines and table)
+- BusDelay: 1,437 (+60, payload B)
 
-| case | what happens |
+The build rejects invalid selections with a descriptive error:
+
+| Condition | Result |
 |---|---|
-| no safe fallback | refused; `fallback="SEND"` adds it |
-| a buffer clash | refused, naming the effects that need the same buffer (Flanger, Chorus, Spatializer, Comb Filter) |
-| past a payload's region | refused, naming the payload |
+| No safe fallback | Build fails; set `fallback="SEND"` to add one |
+| Buffer conflict | Build fails and names the conflicting effects (Flanger, Chorus, Spatializer, Comb Filter) |
+| Payload region exceeded | Build fails and names the overflowing payload |
 
-The buffer clash is why adding BusVerb to a stock chooser costs seven
-effects: FLANGER, CHORUS, SPATIALIZER, COMB and the three reverbs each
-take a per-track instance buffer from the host's bump allocator (each
-reads `x:>$213`: PLATE at `0x01018`, SPRING `0x01267`, DARK `0x01692`) at
-the addresses BusVerb's tank hardcodes, and the chooser is one list for all
-eight tracks. The collision cannot follow them to FX1: the allocator keeps
-separate tables, FX1 bases `0x1000 0x1c00 0x2800 0x3400` of 3,072 words
-topping out at `0x3fff`, FX2 `0x4000 0x8000` + the shared-window pair of
-16,384.
+That buffer conflict is why adding BusVerb to a stock FX2 menu costs seven stock
+effects. FLANGER, CHORUS, SPATIALIZER, COMB, and the three stock reverbs each
+allocate a per-track instance buffer via the host bump allocator (reading
+`x:>$213`: PLATE at `0x01018`, SPRING at `0x01267`, DARK at `0x01692`) at the
+same addresses hardcoded by BusVerb's tank, and all eight tracks share one FX2
+chooser list. Those effects can still live on FX1 without conflicting because
+the allocator keeps separate buffer tables: FX1 uses bases `0x1000`, `0x1c00`,
+`0x2800`, and `0x3400` (3,072 words each, up to `0x3fff`), while FX2 uses
+`0x4000`, `0x8000`, and the 16,384-word shared-window pair.
 
 ### Harvesting
 
-A remix with every stock effect listed has nothing harvested: all 6,158 words of a payload's
-effect code belong to a stock effect that is using them. Taking an effect
-off **both** choosers is the decision to give up its words
-(`stock.harvested`); removing it from one menu while it still has a row on
-the other frees nothing. The three reverbs are only the default harvest:
-the biggest, and FX2-only, so taking them costs FX1 nothing. The thirteen
-DSP effects are laid out contiguously, so any unbroken run of them is
-ground a module can be placed into. A routine that a kept effect calls inside a harvested one
-stays where it is and the run is placed around it (DARK REV calls 35 words
-in SPRING's span, PLATE calls 93 in DARK's, five effects call 27 in
-FILTER's; `stock.pinned`, printed by the build as `kept (... called by
-...)`).
+If a remix lists every stock effect, no DSP space is reclaimed: all 6,158 words
+of stock effect code remain in use. To free an effect's words for new modules
+(`stock.harvested`), you must remove it from **both** FX1 and FX2 menus.
+Removing it from only one menu frees nothing. The three stock reverbs are the
+most common harvest target because they are large and FX2-only, so removing them
+leaves FX1 intact.
 
-A module must fit inside one run: two runs of 1,500 words will not take a
-2,000-word module, so the build report names the largest opening beside the
-total. Harvesting an effect that sits between two runs joins them.
-Harvested is not unlisted: an effect keeps its algorithm wherever your
-code did not reach (the region packs from the lowest address upward and
-the build reports which survived), so an effect can be listed and
-harvested at once until the placer reaches it; the build then refuses the
+Because the 13 stock DSP effects sit contiguously in memory, any unbroken span
+of removed effects forms a single free block for module placement. If a kept
+effect calls a helper routine inside a removed effect's span, the placer keeps
+that helper in place and works around it (DARK REV calls 35 words in SPRING's
+span, PLATE calls 93 words in DARK's, and five effects call 27 words in FILTER's;
+the build logs these as `kept (... called by ...)` via `stock.pinned`).
+
+Each module must fit within one contiguous span—two separate 1,500-word gaps
+cannot hold a 2,000-word module—so the build report prints both total free words
+and the largest single opening. Removing a stock effect sitting between two free
+spans merges them. Note that unlisting an effect makes its space available
+without immediately erasing it: the placer packs upward from the lowest address
+and reports which unlisted effects survived untouched. If you list an effect
+whose code region was overwritten by a placed module, the build rejects that
 row.
 
-Stock rows are not in the cycles figure (FILTER costs 192 cycles per
-instance).
+Stock effect rows are not included in the cycle budget report (for reference,
+FILTER uses 192 cycles per instance).
 
 ### FX1 rows
 
-`Remix.fx1` gives an effect an FX1 row. It costs no words (the DSP dispatch is shared by both menus; the list is
-rebuilt in the cave with FX1's three `lea` references, its id lookup and
-its cursor table repointed) and it costs cycles: FX1 is four more slots on
-the same four tracks, so an effect on both menus can double the worst
-per-core load (4× → 8× instances). Only a buffer-free
-insert, or an allocator reader declaring `buffer_words` ≤ 3,072, may take
-one; the build refuses the rest by name. A `replaces` module is listed by its own key. Every id
-a shortened FX1 list drops has its cursor row clamped to 0.
+Setting `Remix.fx1` puts effects in the FX1 chooser. Adding a row to FX1 costs
+no DSP words—both menus share the same DSP dispatch table, and the build
+rebuilds the FX1 menu list in a cave with its three `lea` references, ID lookup,
+and cursor table updated—but it does increase worst-case cycle counts. Because
+FX1 adds four more slots across the same four tracks per core, putting an effect
+on both FX1 and FX2 can double its worst-case load (from 4 to 8 instances per
+core). Only buffer-free inserts, or effects that read the allocator and declare
+`buffer_words` ≤ 3,072, can be placed on FX1; the build rejects anything else.
+A module using `replaces` is listed under its own key. If you shorten the FX1
+list, any dropped effect ID has its cursor row clamped to 0.
 
 ## Writing `remix.py` by hand
 
-A remix is one directory, `remixes/<name>/`: `remix.py` holds the
-selection, `README.md` says what is in it. The
-registry discovers every `remixes/*/remix.py`, `remixes/test/*/remix.py`
-and `remixes/community/*/remix.py`; nothing else registers it. A remix
-that carries one module for that module's gates goes in
-`remixes/test/<name>/`; one you compose for your own card and want in the
-repository goes in `remixes/community/<name>/`, named after you or its
-purpose, never `octabam-*` (CONTRIBUTING.md "Remixes"). CI does not build a
-community remix, so run `make check REMIX=<name>` before its PR; the web
-builder offers it once it passes that check in the publish run. Names are unique
-across the three, and every tool takes the bare name (`make check REMIX=miniverb`).
+Each remix is a directory at `remixes/<name>/` containing `remix.py` (the module
+selection) and `README.md` (a summary of what is included). The registry
+automatically discovers `remixes/*/remix.py`, `remixes/test/*/remix.py`, and
+`remixes/community/*/remix.py` with no manual registration. Put single-module
+gate remixes in `remixes/test/<name>/`, and personal remixes you want to share
+in `remixes/community/<name>/`, named after yourself or the remix's purpose
+(never `octabam-*`; see `CONTRIBUTING.md`, "Remixes"). Because CI does not build
+community remixes, run `make check REMIX=<name>` locally before opening a PR;
+the web builder publishes any community remix that passes `make check` during
+its publish run. Remix names must be unique across all three folders, and tools
+accept the bare directory name (for example `make check REMIX=miniverb`).
 
-Copy an existing `remix.py` and edit it. `remixes/octabam-bus/remix.py`
-is the bus with stations, hosts and ColdFire mods,
-`remixes/test/euclid/remix.py` an insert beside the stock effects,
-  `remixes/test/kits/remix.py` one ColdFire mod and no DSP code.
+The easiest way to start is to copy an existing `remix.py` and edit it:
+
+- `remixes/octabam-bus/remix.py`: full bus setup with hosts and ColdFire mods
+- `remixes/test/euclid/remix.py`: a single DSP insert alongside stock effects
+- `remixes/test/kits/remix.py`: a single ColdFire mod with no DSP changes
 
 ```python
 from remix.schema import Remix
 
 REMIX = Remix(
-    name="mine",                       # == the directory name
-    doc="One line: what is in it.",
+    name="mine",                       # must match the directory name
+    doc="One-line summary of what this remix includes.",
     family="effects",                  # index section: rig, effects, mods, reference, probes
     modules=("REVERB SERVER", "DELAY SERVER", "SEND", "TEMPO SYNC",
-             "FILTER", "LO-FI"),       # the FX2 chooser, in row order
+             "FILTER", "LO-FI"),       # FX2 chooser entries, in row order
     fallback="SEND",                   # or "NONE"
-    # fx1=("FILTER", "EQUALIZER", "SPECTRUM"),   # the FX1 chooser; omitted = stock's ten
+    # fx1=("FILTER", "EQUALIZER", "SPECTRUM"),   # FX1 chooser; omit to keep stock's 10 effects
 )
 ```
 
-- `modules` is the FX2 chooser in row order. A key is a module's `key`
-  (`make modules` prints them) or a stock effect's name: FILTER,
-  EQUALIZER, DJ EQ, PHASER, FLANGER, CHORUS, SPATIALIZER, COMB FILTER,
-  COMPRESSOR, LO-FI, DELAY, PLATE REV, SPRING REV, DARK REV. A module with
-  no chooser row (a ColdFire mod, a bridge, TEMPO SYNC) sits anywhere in
-  the list. A stock effect on neither chooser keeps its code and
-  descriptor (an old project still runs it) and its words become room for
-  modules; the three reverbs are the default room, 2,724 words. The build
-  refuses a listed stock effect whose words a placed module reached, and
-  an overrun by payload: `payload B: SPECTRUM overruns the region (3599 >
-  2724 words)`.
-- `fallback` is where an FX2 id the image does not implement dispatches,
-  id 0 of a fresh part included: `"SEND"` for a remix with a bus server
-  (the track becomes a send), `"NONE"` for one without (the firmware's
-  own NONE). `NONE` beside a bus server is refused.
-- `fx1` is the FX1 chooser in row order; omitted, FX1 stays stock's ten.
-  Only a buffer-free insert may take a row; the build refuses the rest by
-  name. A row costs no words and does cost cycles: four more slots per
-  core.
-- `family` is the remix index's section; without it the remix lists under
-  Reference. `evidence` is optional and shown nowhere.
-- Seven FX2 rows fit in place; up to 32 go to a longer list.
-- Two selected modules that claim one address, id, hook or buffer are
-  refused by name; `make modules` prints the pairwise matrix.
-- `settings` fixes or re-defaults a module's settings for this image:
-  `(store id, setting name) -> value` or `Pin(value)`. A module whose
-  setting chooses its code builds that code; a run-time setting (USB's
-  `TRACKS`, `MAIN`, `CUE`, `MASTER`, `IN`, `MIDI`) is changed on the unit unless
-  the remix pins it: `settings={("octabam.usb", "IN"): Pin("OFF")}`.
-  `python3 tools/remix/brain.py resolve mine` prints every setting and the
-  layer its value came from; the build report prints the same.
-- `defaults` replaces a knob's default in this image:
-  `(module key, mode, knob) -> byte`, with `mode` None for the knob's own
-  default or a MODE label for that mode's view, and `knob` the name the
-  panel shows: `defaults={("DELAY SERVER", "GRAIN", "PTCH"): 96}`. A value
-  outside the knob's count is refused.
-- `hidden`, `named`, `grains`: [MODULES.md](../contributing/MODULES.md).
+Field reference:
 
-Then:
+- `modules`: The FX2 menu in row order, plus any non-menu modules (ColdFire
+  mods, bridges, TEMPO SYNC), which can appear anywhere in the tuple. Use each
+  module's `key` (run `make modules` to list them) or a stock effect name:
+  `FILTER`, `EQUALIZER`, `DJ EQ`, `PHASER`, `FLANGER`, `CHORUS`, `SPATIALIZER`,
+  `COMB FILTER`, `COMPRESSOR`, `LO-FI`, `DELAY`, `PLATE REV`, `SPRING REV`,
+  `DARK REV`. Any stock effect omitted from both `modules` and `fx1` makes its
+  DSP code space available for placed modules (the three stock reverbs free
+  2,724 words by default), while keeping its code and descriptor intact until a
+  placed module overwrites it so older projects still work. The build fails if a
+  listed stock effect's code is overwritten, or if a payload runs out of space.
+- `fallback`: Where unrecognized FX2 IDs (including ID 0 on a fresh Part)
+  dispatch. Use `"SEND"` for remixes with a bus server and `"NONE"` for remixes
+  without one. Using `"NONE"` alongside a bus server is rejected.
+- `fx1`: The FX1 menu in row order. If omitted, FX1 keeps the 10 stock effects.
+  Only buffer-free inserts (or compatible allocator readers) are allowed here.
+  Adding FX1 rows costs no DSP words, but adds four potential instances per core
+  to the cycle budget.
+- `family`: Controls which section of the remix index lists this remix (defaults
+  to Reference). `evidence` is optional and not displayed.
+- Up to 7 FX2 rows fit in place; 8 to 32 rows automatically move to an extended
+  list.
+- Conflicting modules that claim the same address, ID, hook, or buffer fail the
+  build and are reported by name; run `make modules` to see the compatibility
+  matrix.
+- `settings`: Overrides default or fixed settings for this image using
+  `(store id, setting name) -> value` or `Pin(value)`. Build-time settings
+  select which code is compiled in; runtime settings (such as USB's `TRACKS`,
+  `MAIN`, `CUE`, `MASTER`, `IN`, and `MIDI`) remain editable on the unit unless
+  pinned, e.g. `settings={("octabam.usb", "IN"): Pin("OFF")}`. Run
+  `python3 tools/remix/brain.py resolve mine` (or check the build report) to
+  inspect resolved settings and where each value came from.
+- `defaults`: Overrides knob defaults for this image using
+  `(module key, mode, knob) -> byte`, where `mode` is `None` for the knob's base
+  default or a `MODE` label for a mode-specific default, and `knob` matches the
+  front-panel name (for example `defaults={("DELAY SERVER", "GRAIN", "PTCH"): 96}`).
+  Values outside the knob's valid range are rejected.
+- `hidden`, `named`, `grains`: See [MODULES.md](../contributing/MODULES.md).
+
+Once your `remix.py` and `README.md` are ready:
 
 ```bash
-make docs                       # re-render remixes/README.md (make check refuses a stale index)
-make check REMIX=mine           # build + cycles + every gate + boot under the port
-make image REMIX=mine BUILD=2   # -> out/OCTATRACK_OCTABAM2.bin
+make docs                       # update remixes/README.md (make check fails if stale)
+make check REMIX=mine           # build, price cycles, run gates, and boot under the port
+make image REMIX=mine BUILD=2   # writes out/OCTATRACK_OCTABAM2.bin
 ```
 
-`make check` also refuses a remix directory without a `README.md`. A remix
-whose parameter layout differs from the one a project was saved under
-needs the stamp before play ([BUILDING.md section 6](BUILDING.md#6-after-the-flash)).
+`make check` requires a `README.md` in every remix directory. If your remix
+changes effect parameter layouts relative to an existing project, stamp the
+project before playing it ([BUILDING.md section 6](BUILDING.md#6-after-the-flash)).
 
 ## Known gaps
 
-- Per-mode `defaults` land on the unit by `stamp-defaults`.
-- Stock rows are not priced.
+- Per-mode `defaults` are applied to existing projects via `stamp-defaults`.
+- Stock effect rows are not included in cycle budgeting.

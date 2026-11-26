@@ -29,8 +29,8 @@ the stereo sum.
 
 IN needs at least one of TRACKS, MAIN, CUE or MASTER switched on, because the
 computer's stream is timed from the Octatrack's output. If none is on,
-changing IN shows **IN NEEDS AN OUTPUT STREAM** and IN stays OFF. IN is served
-at USB high speed only.
+changing IN shows **IN NEEDS AN OUTPUT STREAM** and IN stays OFF. IN is
+available at USB high speed only.
 
 ### Changing a setting
 
@@ -48,30 +48,32 @@ at USB high speed only.
 
 ## USB MIDI
 
-MIDI in and out over USB, mirroring the DIN ports. The sequencer, time
-stretch, the LFOs and the FX follow USB MIDI clock.
+USB MIDI provides MIDI input and output over USB, mirroring the DIN ports. The
+sequencer, time stretch, LFOs, and effects all follow USB MIDI clock.
 
-A burst of output, such as the 283 CCs of a CC 61 dump, is queued and sent in
-order. Up to about 4 KB can wait for the computer to read; messages past that
-are dropped and counted in the USB tab. Before this, a burst longer than 256
-bytes lost its tail.
+Output bursts, such as the 283 CCs of a CC 61 dump, are queued and sent in
+order. Up to about 4 KB can buffer while waiting for the computer to read;
+messages past that limit are dropped and counted in the USB tab. (In earlier
+builds, bursts longer than 256 bytes lost their tail.)
 
-The Octatrack follows one clock at a time, and DIN comes first. While MIDI
-clock is arriving on DIN, USB clock, START, STOP, CONTINUE and song position
-are ignored. USB takes over about a sixth of a second after the last DIN clock.
-Before this, both clocks together doubled the tempo.
+The Octatrack follows one clock source at a time, with DIN taking priority.
+While MIDI clock is arriving on DIN, USB clock, START, STOP, CONTINUE, and song
+position messages are ignored. USB takes over about one-sixth of a second after
+the last DIN clock arrives. (In earlier builds, receiving both clocks together
+doubled the tempo.)
 
-USB MIDI is silent while USB DISK MODE is on, clock included, and MIDI sent
-to the Octatrack over USB is not received then. DIN MIDI is unaffected. Before
-this, with CLOCK SEND on, files copied off the card in DISK MODE could come
-back with 4 bytes replaced at 64 KB boundaries. A file copied that way and
-written back carries those bytes: re-copy anything you copied with CLOCK SEND
-on, and compare it with the card.
+USB MIDI is disabled while USB DISK MODE is on, including clock, and incoming
+USB MIDI is not received during that time. DIN MIDI is unaffected. In earlier
+builds with CLOCK SEND on, files copied off the card in DISK MODE could come
+back with 4 bytes corrupted at 64 KB boundaries. Any file copied that way and
+written back to the card retains those corrupted bytes, so re-copy anything
+transferred with CLOCK SEND on and compare it against the card.
 
 ## Audio in
 
-With IN set, the computer's channels are the Octatrack's inputs, as described
-under IN above. While the computer's stream is closed, the jacks are the inputs.
+When IN is enabled, the computer's channels feed the Octatrack's inputs as
+described under IN above. Whenever the computer's audio stream is closed, the
+physical input jacks remain active.
 
 ## Reading USB activity
 

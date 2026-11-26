@@ -1,18 +1,19 @@
-Boots an OS image from the card without writing the flash. Each `.RMX`
-file in `/BRAIN/REMIXES/` is a raw OS image.
+This module boots an OS image directly from the CF card without writing to
+flash memory. Each `.RMX` file in `/BRAIN/REMIXES/` is a raw OS image.
 
 ## Operation
 
-BRAIN > REMIXES lists the `.RMX` files in order. The one whose name
-matches the running image (case and spaces ignored) shows `RUNNING` at the
-right. Press [YES] to be asked `BOOT <NAME>?`; [YES] again boots it
-without writing the flash. After a switch, a `FLASHED` separator shows the
-image that a power-cycle returns to.
+Open **BRAIN > REMIXES** to see the `.RMX` files listed in order. The entry
+whose name matches the currently running image (ignoring case and spaces) is
+marked `RUNNING` on the right. Press **[YES]** to bring up the `BOOT <NAME>?`
+prompt, then press **[YES]** again to boot it without writing to flash. After
+switching images, a `FLASHED` separator indicates the image that the unit will
+return to after a power cycle.
 
-If the DSP has stopped (no sound, the sequencer stuck on a step), the
-switch is refused with `DSP STOPPED: REBOOT`, and the unit is not
-reset. The choice is already saved, so a power-cycle boots it. A card
-read that comes up short is refused with `IO ERROR`.
+If the DSP has stopped (no audio output and the sequencer is stuck on a step),
+the switch is blocked with `DSP STOPPED: REBOOT` and the unit does not reset.
+Your selection is already saved, so power-cycling the unit boots it. If a card
+read comes up short, the switch fails with `IO ERROR`.
 
-The image you switch to need not carry this module: stock 1.40C itself is
-a valid target.
+The target image does not need to include this module; stock 1.40C is a valid
+target.

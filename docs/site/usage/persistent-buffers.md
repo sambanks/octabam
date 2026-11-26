@@ -5,6 +5,6 @@ re-reading the WAV, so the UI updates as soon as the write finishes. On
 PROJECT LOAD or RELOAD, those files are loaded into the same slots when
 present.
 
-Empty buffers are skipped. Nothing on the panel. It rides the stock
-project save and load. Keep the folder name free of a leading `!` so the
-stock slot loader accepts the path.
+Empty buffers are skipped. The module adds no panel controls and runs
+automatically during standard project save and load. Keep the folder name free
+of a leading `!` so the stock slot loader accepts the path.

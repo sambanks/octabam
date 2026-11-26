@@ -1,7 +1,7 @@
-The effect loader, in two halves: this one and the [copier](dlcopy.md). SPECTRUM, CHARACTER, MODULATION, SHATTER and COMPRESSOR's side-chain are not kept in the effects processor all the time: the loader brings one in while a track uses it and takes it out when none does. This half sends the code to the processor in small pieces. It has no controls and nothing on the panel.
+DLPUMP is the sending half of the two-part effect loader, paired with the [copier](dlcopy.md). SPECTRUM, CHARACTER, MODULATION, SHATTER, and COMPRESSOR's side-chain do not stay loaded in the effects processor at all times; the loader loads an effect when a track uses it and unloads it when none does. DLPUMP streams the effect code to the processor in small chunks. It has no controls or panel indicators.
 
 ## What you will notice
 
-- Until the code arrives, about 25 ms after you choose the effect, the effect passes the audio through.
-- A pattern change that puts one of these effects on all eight tracks, or takes it off them, leaves about 0.34 s of silence at the switch.
-- In Octabam, choosing a stock reverb (PLATE, SPRING or DARK) on the FX2 slot that shares its memory with a loaded effect is refused with a message, and so is the reverse. A song that sets both another way leaves the reverb or the effect dry, and says which at the next page key.
+- Audio passes through dry for about 25 ms after you select one of these effects while its code finishes loading.
+- A pattern change that adds one of these effects to all eight tracks (or removes it from all eight) produces about 0.34 s of silence during the transition.
+- In Octabam, a loaded effect shares memory with stock reverbs (PLATE, SPRING, and DARK) on the same FX2 slot. Selecting a stock reverb while a loaded effect is using that memory, or selecting a loaded effect while a stock reverb is using it, is blocked with a message. If a project assigns both through another path (such as loading a saved Part), one of them stays dry and a message identifies which one the next time you press a page key.

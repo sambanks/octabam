@@ -1,1 +1,1 @@
-SPRING REV's id, kept with no chooser row. A Part saved with SPRING REV opens on VERBERATION in ROOM mode instead.
+This stub retains SPRING REV's effect ID without a chooser row, so any Part saved with SPRING REV opens on VERBERATION in ROOM mode instead.

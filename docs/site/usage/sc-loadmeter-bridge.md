@@ -1,4 +1,4 @@
-Lets the side-chain compressor and the load meter work in one image. Both
-need to act when a track's FX2 is committed; this makes them take turns at
-that point instead of conflicting. It has no controls and nothing on the
-panel.
+This bridge module lets the side-chain compressor and the load meter work
+together in one image. Both modules need to run when a track's FX2 assignment
+is committed, and this module coordinates them so they take turns instead of
+conflicting. It has no user controls and does not appear on the panel.

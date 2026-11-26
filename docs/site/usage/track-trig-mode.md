@@ -1,5 +1,6 @@
 # TRACK TRIG MODE
 
-Hteah's single-mode track trig editing in GRID RECORDING. This is the
-singular variant; the separate plural module was withdrawn and its PR closed.
-Proof is emulator-only; not on hardware here.
+This module implements Hteah's single-mode track trig editing in GRID
+RECORDING. It is the singular variant; the separate plural module was withdrawn
+and its pull request was closed. It has only been verified in software and has
+not been tested on hardware.
