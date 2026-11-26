@@ -611,12 +611,15 @@ def check_ui(src: str) -> None:
     for code, handler in (
         ("0x31", "ef_yes"),
         ("0x32", "ef_no"),
+        ("0x34", "ef_page_left"),
+        ("0x21", "ef_page_right"),
         ("0x2a", "ef_cue"),
+        ("0x35", "ef_midikey"),
         ("0x10", "ef_trkkey"),
         ("0x17", "ef_trkkey"),
     ):
-        check(f"key {code} -> {handler}",
-              re.search(rf"\.byte\s+{code},.*?\n\s*\.long\s+{handler}(_k)?\b", keys, re.S)
+        check(f"key {code} -> {handler}_k",
+              re.search(rf"\.byte\s+{code},.*?\n\s*\.long\s+{handler}_k\b", keys, re.S)
               is not None)
     check("ef_trkkey stashes ef_pending (no load/store on key path)",
           "ef_trkkey:" in src
@@ -634,8 +637,28 @@ def check_ui(src: str) -> None:
           "UI_WINDOW" in _block(src, "ef_trkkey:", "ef_dest_label:")
           or "0x460d175c" in _block(src, "ef_trkkey:", "ef_dest_label:"))
     check("EF_KEYS CUE/TRACK wire press and release (not swallow release)",
-          re.search(r"\.byte\s+0x2a,.*?\n\s*\.long\s+ef_cue(_k)?,\s*ef_cue(_k)?\b", keys, re.S)
-          and re.search(r"\.byte\s+0x10,.*?\n\s*\.long\s+ef_trkkey(_k)?,\s*ef_trkkey(_k)?\b", keys, re.S))
+          re.search(r"\.byte\s+0x2a,.*?\n\s*\.long\s+ef_cue_k,\s*ef_cue_k\b", keys, re.S)
+          and re.search(r"\.byte\s+0x10,.*?\n\s*\.long\s+ef_trkkey_k,\s*ef_trkkey_k\b", keys, re.S))
+    thunked = ("ef_yes", "ef_no", "ef_page_left", "ef_page_right", "ef_cue",
+               "ef_midikey", "ef_trkkey", "ef_enc", "ef_cl_cancel")
+    layer = _block(src, "| ---- layer", "EF_LAYER:")
+    check("layer key/encoder handlers use kthunk save/restore",
+          ".macro  kthunk name" in layer
+          and all(f"kthunk  {name}" in layer for name in thunked)
+          and "\\name\\()_k:" in layer
+          and "movem.l %d2-%d7/%a2-%a6,(%sp)" in layer
+          and "bsr.w   \\name" in layer)
+    ef_lst = ROOT / "out/platform/runtime/54_ef.lst"
+    if ef_lst.exists():
+        lst_txt = ef_lst.read_text()
+        check("kthunk assembles *_k wrappers (54_ef.lst)",
+              all(f"{name}_k:" in lst_txt for name in thunked))
+    bad_keys = re.findall(
+        r"\.long\s+(ef_(?:yes|no|page_left|page_right|cue|midikey|trkkey|enc|cl_cancel)),",
+        keys,
+    )
+    check("EF_KEYS never calls layer handlers without _k",
+          not bad_keys, f"keys={bad_keys}")
     check("ef_trkkey calls stock SEL_TRACK (sequencer view)",
           ("0x40083bf8" in _block(src, "ef_trkkey:", "ef_dest_label:")
            or "SEL_TRACK" in _block(src, "ef_trkkey:", "ef_dest_label:")))
@@ -666,19 +689,18 @@ def check_ui(src: str) -> None:
           "ef_hit:" in src and "ef_free" in _block(src, "ef_hit:", "ef_enc:"))
 
     encs = _block(src, "EF_ENCS:", "T_TITLE:")
-    check("encoder A (0) -> ef_enc",
-          re.search(r"\.byte\s+0,\s*0[^\n]*\n\s*\.long\s+ef_enc(_k)?\b", encs) is not None)
-    check("encoder B (1) -> ef_enc",
-          re.search(r"\.byte\s+1,\s*0[^\n]*\n\s*\.long\s+ef_enc(_k)?\b", encs) is not None)
-    check("encoder C (2) -> ef_enc (LANE)",
-          re.search(r"\.byte\s+2,\s*0[^\n]*\n\s*\.long\s+ef_enc(_k)?\b", encs) is not None
-          and "L_LANE" in src and "ef_lane:" in src)
-    check("encoder D (3) -> ef_enc",
-          re.search(r"\.byte\s+3,\s*0[^\n]*\n\s*\.long\s+ef_enc(_k)?\b", encs) is not None)
-    check("encoder E (4) -> ef_enc",
-          re.search(r"\.byte\s+4,\s*0[^\n]*\n\s*\.long\s+ef_enc(_k)?\b", encs) is not None)
-    check("encoder F (5) -> ef_enc (page-specific)",
-          re.search(r"\.byte\s+5,\s*0[^\n]*\n\s*\.long\s+ef_enc(_k)?\b", encs) is not None)
+    bad_encs = re.findall(
+        r"\.long\s+(ef_(?:yes|no|page_left|page_right|cue|midikey|trkkey|enc|cl_cancel)),",
+        encs,
+    )
+    check("EF_ENCS never calls layer handlers without _k",
+          not bad_encs, f"encs={bad_encs}")
+    for enc_id, label in ((0, "A"), (1, "B"), (2, "C"), (3, "D"), (4, "E"), (5, "F")):
+        extra = (" (LANE)" if enc_id == 2 else " (page-specific)" if enc_id == 5 else "")
+        ok = re.search(rf"\.byte\s+{enc_id},\s*0[^\n]*\n\s*\.long\s+ef_enc_k\b", encs) is not None
+        if enc_id == 2:
+            ok = ok and "L_LANE" in src and "ef_lane:" in src
+        check(f"encoder {label} ({enc_id}) -> ef_enc_k{extra}", ok)
     check("encoder LEVEL (6) -> ef_level",
           re.search(r"\.byte\s+6,\s*0[^\n]*\n\s*\.long\s+ef_level\b", encs) is not None)
     enc = _block(src, "ef_enc:", "ef_level:")
