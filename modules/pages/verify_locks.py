@@ -53,29 +53,20 @@ import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
+sys.path.insert(0, str(HERE.parents[1] / "tools/verify"))
+import gatekit  # noqa: E402  (tools/verify/gatekit.py: the [PASS]/[FAIL] lines, the runtime map)
 EMU = ROOT / "out/emu/ot_emu"
 OUT = ROOT / "out/pages/locks"
 PART = 0x40170F60                     # bank 1's Part 1 in RAM (the card's working Part)
 MIX_AT = 0x2A                         # T1's KIT BALANCE bytes
 SRC, YES, T1, REC, SCENE_A, SCENE_B, FUNC = 0x22, 0x31, 0x10, 0x29, 0x19, 0x1A, 0x2D
 PROJ, RIGHT, DOWN = 0x1C, 0x21, 0x20
-FAILS = []
-
-
-def check(name, ok, detail=""):
-    print(f"  [{'PASS' if ok else 'FAIL'}] {name}" + (f" -- {detail}" if detail else ""))
-    if not ok:
-        FAILS.append(name)
+GATE = gatekit.Gate()
+check, FAILS = GATE.check, GATE.fails
 
 
 def symbol(name, need=True):
-    for line in (ROOT / "out/platform/runtime/runtime.map").read_text().splitlines():
-        w = line.split()
-        if len(w) == 2 and w[1] == name and w[0].startswith("0x"):
-            return int(w[0], 16)
-    if need:
-        sys.exit(f"verify_locks: {name} not in the runtime map (build a remix with DRUMMER, PAGES and EVENTS)")
-    return None
+    return gatekit.runtime_symbol(name, "verify_locks", hint=" (build a remix with DRUMMER, PAGES and EVENTS)", need=need)
 
 
 def fixture(image):

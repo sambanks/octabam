@@ -27,6 +27,8 @@ import sys
 import tempfile
 
 HERE = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parents[1] / "tools/verify"))
+import gatekit  # noqa: E402  (tools/verify/gatekit.py: the [PASS]/[FAIL] lines, the runtime map)
 sys.path.insert(0, str(HERE))
 import engine as E  # noqa: E402
 
@@ -34,13 +36,8 @@ CF_FLAGS = ['-mcpu=5475', '-msoft-float', '-O2', '-ffreestanding', '-fno-builtin
             '-fno-tree-loop-distribute-patterns', '-fno-jump-tables', '-fno-asynchronous-unwind-tables',
             '-fno-ident', '-fomit-frame-pointer', '-std=c11', '-Wall', '-Wextra', '-Werror']
 
-FAILS = []
-
-
-def check(name, cond, detail=""):
-    print(f"  [{'PASS' if cond else 'FAIL'}] {name}" + (f" -- {detail}" if detail and not cond else ""))
-    if not cond:
-        FAILS.append(name)
+GATE = gatekit.Gate(detail_on_pass=False)
+check, FAILS = GATE.check, GATE.fails
 
 
 def full_kit():

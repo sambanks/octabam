@@ -32,6 +32,8 @@ import subprocess
 import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parents[1] / "tools/verify"))
+import gatekit  # noqa: E402  (tools/verify/gatekit.py: the [PASS]/[FAIL] lines, the runtime map)
 sys.path.insert(0, str(HERE))
 import probe_slices as ps  # noqa: E402
 import verify_port as vp  # noqa: E402
@@ -54,13 +56,8 @@ CASES = {
     "settle": ((1, 0, 0, 0, 0), (), (1.0,), None),
     "travel": ((1, 0, 0, 0, 0), (), (1.2,), None),
 }
-FAILS = []
-
-
-def check(name, ok, detail=""):
-    print(f"  [{'PASS' if ok else 'FAIL'}] {name}" + (f" -- {detail}" if detail else ""))
-    if not ok:
-        FAILS.append(name)
+GATE = gatekit.Gate()
+check, FAILS = GATE.check, GATE.fails
 
 
 def tap(ms, code):

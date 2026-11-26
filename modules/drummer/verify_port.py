@@ -50,6 +50,8 @@ import subprocess
 import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parents[1] / "tools/verify"))
+import gatekit  # noqa: E402  (tools/verify/gatekit.py: the [PASS]/[FAIL] lines, the runtime map)
 sys.path.insert(0, str(HERE))
 import engine as E  # noqa: E402
 import probe_slices as ps  # noqa: E402
@@ -98,11 +100,7 @@ ALIGNS = {"align": {5: 20}}
 
 
 def symbol(name):
-    for line in (ps.ROOT / "out/platform/runtime/runtime.map").read_text().splitlines():
-        w = line.split()
-        if len(w) == 2 and w[1] == name and w[0].startswith("0x"):
-            return int(w[0], 16)
-    raise SystemExit(f"verify_port: {name} not in the runtime map (build the image first)")
+    return gatekit.runtime_symbol(name, "verify_port", hint=" (build the image first)")
 TEMPO = 240
 STEP = 44100 * 60 / TEMPO / 4                  # samples
 

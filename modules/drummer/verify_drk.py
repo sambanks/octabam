@@ -20,6 +20,8 @@ import argparse, pathlib, struct, subprocess, sys, zlib
 
 HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
+sys.path.insert(0, str(HERE.parents[1] / "tools/verify"))
+import gatekit  # noqa: E402  (tools/verify/gatekit.py: the [PASS]/[FAIL] lines, the runtime map)
 sys.path.insert(0, str(ROOT / "tools"))
 import toolpath  # noqa: E402,F401
 from emu import emu_card  # noqa: E402
@@ -29,21 +31,12 @@ OUT = ROOT / "out/drummer/drk"
 T1, TRIG1, BANK, YES, RIGHT = 0x10, 0x00, 0x2F, 0x31, 0x21
 FLEX_SET, DIALOG_OPEN = 0x100B14F0, 0x460E5CD0
 DRK = "OCTABAM/AUDIO/DRUMMER_TEST.drk"
-FAILS = []
-
-
-def check(name, ok, detail=""):
-    print(f"  [{'PASS' if ok else 'FAIL'}] {name}" + (f" -- {detail}" if detail else ""))
-    if not ok:
-        FAILS.append(name)
+GATE = gatekit.Gate()
+check, FAILS = GATE.check, GATE.fails
 
 
 def symbol(name):
-    for line in (ROOT / "out/platform/runtime/runtime.map").read_text().splitlines():
-        w = line.split()
-        if len(w) == 2 and w[1] == name and w[0].startswith("0x"):
-            return int(w[0], 16)
-    sys.exit(f"verify_drk: {name} not in the runtime map")
+    return gatekit.runtime_symbol(name, "verify_drk")
 
 
 def script(events):
