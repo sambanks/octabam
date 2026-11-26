@@ -17,13 +17,23 @@ and empty F. Harmony has A=**SCAL**, B=**ROOT**, D=**PHRS**, E=**JUMP** on
 audio and MIDI. MIDI C=**VOIC** 1 to 4 and F=**CHRD**; audio C and F are empty.
 Fresh audio settings select **SRC** / **PTCH**; MIDI settings select
 **NOTE**. The page hint sits at the top-right of the SEQ logo panel.
-Audio pitch availability follows the resolved parameter name: FLEX PTCH
-and OCTA-303 / WAVE CF TUNE open Harmony, while THRU INAB stays on Rhythm
-without the RIGHT hint. On a FLEX track signed by OCTA-303 (`TB`,1) or
-WAVE CF (`WV`,1), slot-0 TUNE locks are one raw step per semitone, raw 64
-= C3, span up to 24 semitones and fold by octaves into C1..C5 (raw 40..88).
-`verify_seq_tonal_port.py` checks THRU and FLEX through the panel and fills
-both signed tracks with Part TUNE at C5.
+Audio pitch availability follows the resolved parameter name (PTCH or
+TUNE) and the track's pitch kind (`ef_pitch_kind`, from the machine byte
+and the FLEX signature):
+
+| track | slot-0 locks | span | range |
+|---|---|---|---|
+| STATIC, FLEX, PICKUP | 64 + 5·st | 12 st | 0..127 |
+| FM SYNTH, SY, CX OSC (`FM` / `SY` / `CX`,1) | 64 + st | 64 st | clamp 0..127 |
+| OCTA-303, WAVE CF (`TB` / `WV`,1) | 64 + st, 64 = C3 | 24 st | fold into 40..88 (C1..C5) |
+| BLKPYRAMD (`OT`,1) | 60 + st, 0 = C0 | 24 st | fold into 0..96 (C0..C8) |
+| THRU, NEIGHBOR, ANALOG BD (`AB`,1), DRUMMER (`DR`,1) | not a pitch | | generic Part ± DPTH |
+
+A signature counts only on a FLEX track, as each machine's own check
+reads it. The first two rows keep their earlier behaviour.
+`verify_seq_tonal_port.py` checks THRU and FLEX through the panel, fills
+OCTA-303, WAVE CF and BLKPYRAMD tracks with Part pitch at the top of their
+range, and checks that ANALOG BD stays on Rhythm with generic locks.
 **LANE** selects whether A/B and the grid edit the **TRIG** rhythm or the
 **PLOCK** rhythm for the current destination. **`[YES]`** writes the TRIG
 rhythm and selected destination's locks. On audio tracks, TRIG writes sample
@@ -119,8 +129,10 @@ use (TRIG: reshape to trig set; PLOCK: clear on hits/misses). Non-zero:
 - **DEST = PTCH:** DPTH sets pitch variation around the Part PLAYBACK PTCH.
   SEQ chooses pitches from SCAL and ROOT. FM, SY and CX can span up to 64
   semitones either side, limited by the raw PTCH range. OCTA-303 and WAVE CF
-  TUNE span up to 24 semitones, folded by octaves into C1..C5. Silent / PLCK
-  misses fall back to Part.
+  TUNE span up to 24 semitones, folded by octaves into C1..C5; BLKPYRAMD
+  PTCH the same, into C0..C8. Slot 0 on THRU, NEIGHBOR, ANALOG BD and
+  DRUMMER takes the generic rule below. Silent / PLCK misses fall back to
+  Part.
 - **DEST = AMP VOL:** unipolar below Part AMP VOL.
 - **Any other DEST:** uniform `[Part−DPTH .. Part+DPTH]` clamped 0..127.
 

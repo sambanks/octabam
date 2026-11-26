@@ -867,8 +867,8 @@ def check_ui(src: str) -> None:
           "movel   %d2,-(%sp)" in _block(src, "ef_dest_label:", "ef_draw_pat:")
           and "movel   (%sp)+,%d2" in _block(src, "ef_dest_label:", "ef_draw_pat:"))
     check("PLAYBACK DEST names via page resolver (same as LFO PMTR)",
-          "LFD_RESOLVER" in _block(src, "ef_dest_name:", "ef_is_synth:")
-          and "FLEX_P" in _block(src, "ef_dest_name:", "ef_is_synth:")
+          "LFD_RESOLVER" in _block(src, "ef_dest_name:", "ef_pitch_kind:")
+          and "FLEX_P" in _block(src, "ef_dest_name:", "ef_pitch_kind:")
           and "TITLE_OFF" in _block(src, "dn_got:", "dn_miss:"))
     check("FX page-2 DESTs use PLOCKS P2 store and keep per-track settings",
           "DEST_P2FIRST" in src and "DEST_P2LAST" in src
@@ -938,9 +938,9 @@ def check_ui(src: str) -> None:
           "ef_tone_range" not in src and "L_RANGE" not in src
           and "ep_base:" not in ptch)
     check("ef_write_ptch writes LOCK_PTCH", "LOCK_PTCH" in ptch)
-    check("ef_is_synth accepts CX with FM/SY",
-          "0x4358" in _block(src, "ef_is_synth:", "ef_bit_addr:")
-          and "0x464d" in _block(src, "ef_is_synth:", "ef_bit_addr:"))
+    check("ef_pitch_kind accepts CX with FM/SY",
+          "0x4358" in _block(src, "ef_pitch_kind:", "ef_bit_addr:")
+          and "0x464d" in _block(src, "ef_pitch_kind:", "ef_bit_addr:"))
     check("ef_write_ptch rad = max_rad*DEPTH/127",
           "ef_depth" in ptch
           and re.search(r"moveq\s+#127,%d1", ptch) is not None
@@ -966,7 +966,7 @@ def check_ui(src: str) -> None:
           and re.search(r"\.set\s+MACH_OFF,\s*0x8eda2", src) is not None
           and "ep_dst:" in ptch)
     check("ef_write_ptch encodes sample 64+5·st and synth 64+st",
-          "ef_is_synth" in ptch
+          "ef_pitch_kind" in ptch
           and "ep_samp:" in ptch
           and re.search(r"muls\.l\s+%d1,%d0", ptch) is not None
           and re.search(r"addi\.l\s+#64,%d0", ptch) is not None)

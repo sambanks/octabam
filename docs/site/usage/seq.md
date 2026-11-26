@@ -115,6 +115,9 @@ returns to the Euclidean pattern.
 
 On audio tracks, Harmony controls the **SRC** / **PTCH** destination. On
 OCTA-303 and WAVE tracks it controls **SRC** / **TUNE**, the machine's note.
+On ANALOG BD, DRUMMER, THRU and NEIGHBOR tracks the first SRC knob is not a
+note, so Harmony stays closed and **DPTH** varies that knob around its Part
+value.
 **SCAL** and **ROOT** set the scale for generated pitch locks. **DPTH**
 sets their pitch span around the Part's **PLAYBACK PTCH** or **TUNE**. **D** **PHRS**
 chooses RAND, UP, DOWN, ALT or TRI for the generated pitches. New tracks
@@ -127,9 +130,10 @@ the **DPTH** pitch span. ALT and TRI traverse that span from its lowest
 pitch. Sample playback pitch locks use whole-semitone steps. At **DPTH**
 127, sample playback spans up to 12 semitones in either direction; FM, SY
 and CX pitch span up to 64 semitones, limited by the PTCH range. OCTA-303
-and WAVE **TUNE** spans up to 24 semitones and stays within C1 to C5. A
-note past either end moves by octaves back into that range and keeps its
-scale degree.
+and WAVE **TUNE** spans up to 24 semitones and stays within C1 to C5.
+BLKPYRAMD **PTCH** spans up to 24 semitones and stays within C0 to C8. On
+these three, a note past either end moves by octaves back into range and
+keeps its scale degree.
 
 On audio tracks, **C** and **F** are blank.
 

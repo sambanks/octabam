@@ -220,12 +220,15 @@
         | DEST=PTCH: rad = max_rad*DEPTH/127 (min 1 if DEPTH>0).
         | PIT_RAD 64 spans the full raw PTCH range around 64 for FM/SY/CX.
         | PIT_SAMP 12 = sample PLAYBACK max |st|.
-        | PIT_TUNE 24 = OCTA-303 / WAVE CF TUNE, raw TUNE_LO..TUNE_HI (C1..C5).
+        | PIT_TUNE 24 = OCTA-303 / WAVE CF TUNE, raw TUNE_LO..TUNE_HI (C1..C5),
+        | and BLKPYRAMD PTCH, raw 0..BP_HI (C0..C8).
         .set    PIT_RAD,   64
         .set    PIT_SAMP,  12
         .set    PIT_TUNE,  24
         .set    TUNE_LO,   64-PIT_TUNE
         .set    TUNE_HI,   64+PIT_TUNE
+        .set    BP_C5,     60
+        .set    BP_HI,     96
         .set    EF_MAGIC,  0x4546494c   | 'EFIL'
         .set    EF_VER,    12           | v12 appends page-2 depth and plock settings
         .set    EF_BANK_B, 224          | 8 tracks * 28
@@ -2184,9 +2187,13 @@ eps_page:
         bne.s   eps_page
         movel   %a0@,%d0
         cmpil   #0x50544348,%d0         | PTCH
-        beq.s   eps_yes
+        beq.s   eps_name
         cmpil   #0x54554e45,%d0         | TUNE (OCTA-303, WAVE CF)
         bne.s   eps_no
+eps_name:
+        bsr.w   ef_pitch_kind           | ef_trk set by ef_dest_label
+        tstl    %d0
+        bmi.s   eps_no
 eps_yes:
         moveq   #1,%d0
         rts
@@ -3012,7 +3019,12 @@ ef_write_dest:
         bne.w   ed_generic
         movel   ef_dest,%d0
         tstl    %d0
-        beq.w   ef_write_ptch           | PTCH special
+        bne.s   ed_notptch
+        bsr.w   ef_pitch_kind
+        tstl    %d0
+        bpl.w   ef_write_ptch           | PTCH / TUNE special
+        bra.s   ed_generic_base         | slot 0 is not a pitch here
+ed_notptch:
         moveq   #LOCK_VOL,%d1
         cmpl    %d1,%d0
         beq.w   ef_write_vol            | velocity: ceiling = AMP VOL
@@ -3162,8 +3174,9 @@ ev1:    movel   %d1,%d0
 | lock encodes base_st+delta. Center is Part PLAYBACK PTCH (overall
 | knob), not unison - same byte stock unlocks fall back to.
 | FM/SY/CX: raw=64+st (max_rad=PIT_RAD). Sample: raw=64+5·st (PIT_SAMP).
-| OCTA-303 / WAVE CF TUNE: raw=64+st (PIT_TUNE), folded by octaves into
-| TUNE_LO..TUNE_HI. Clamp raw to 0..127 before store.
+| OCTA-303 / WAVE CF TUNE: raw=64+st; BLKPYRAMD PTCH: raw=60+st (PIT_TUNE
+| both), folded by octaves into the machine's range (ef_pk_tab). Clamp raw
+| to 0..127 before store.
 | Caller keeps n in d5 and rot in d6 - park across the pick.
 | ef_tone_mask returns the selected SEQ-owned scale as a 12-bit mask.
 ef_tone_mask:
@@ -3778,18 +3791,15 @@ ef_write_ptch:
         movel   %d6,-(%sp)              | park rot
         movel   %d4,-(%sp)              | park pulses
         movel   %d0,%d7                 | mask
-        bsr.w   ef_is_synth
-        moveq   #PIT_RAD,%d4            | max_rad
-        moveq   #2,%d1
-        cmpl    %d1,%d0
-        bne.s   3f
-        moveq   #PIT_TUNE,%d4
-3:      tstl    %d0
-        bne.s   1f
-        moveq   #PIT_SAMP,%d4
-1:      movel   %d0,-(%sp)              | park is_synth
+        bsr.w   ef_pitch_kind           | 0..3; ef_write_dest routed -1 away
+        lea     ef_pk_tab,%a0
+        movel   %d0,%d1
+        lsll    #2,%d1
+        moveq   #0,%d4
+        moveb   %a0@(0,%d1:l),%d4       | max_rad
+        movel   %d0,-(%sp)              | park pitch kind
         bsr.w   ef_part_ptch            | d0 = Part PTCH raw
-        movel   (%sp),%d1               | is_synth (still parked)
+        movel   (%sp),%d1               | pitch kind (still parked)
         tstl    %d1
         bne.s   ep_dsy
         subi.l  #64,%d0                 | sample: raw offset from unison
@@ -3814,7 +3824,12 @@ ep_sround_pos:
         blt.s   ep_dst
         addql   #1,%d0                 | nearest semitone above
         bra.s   ep_dst
-ep_dsy: subi.l  #64,%d0                 | synth: st = raw-64
+ep_dsy: lea     ef_pk_tab+1,%a0
+        lsll    #2,%d1
+        adda.l  %d1,%a0
+        moveq   #0,%d1
+        moveb   (%a0),%d1
+        subl    %d1,%d0                 | semitone machines: st = raw-centre
 ep_dst:
         movel   %d0,-(%sp)              | park base_st
         | DEPTH sets the pitch radius up to the machine's full range.
@@ -3902,24 +3917,27 @@ ep_got: | d1 = delta; abs st = base_st + delta
         move.l  %d1,%d3
         movel   (%sp)+,%d0              | base_st
         addl    %d0,%d3                 | abs st
-        movel   (%sp)+,%d0              | is_synth
-        tstl    %d0
+        movel   (%sp)+,%d1              | pitch kind
+        tstl    %d1
         beq.s   ep_samp
-        moveq   #2,%d1
-        cmpl    %d1,%d0
-        beq.s   ep_tune
-        moveq   #64,%d0
-        addl    %d3,%d0                 | synth: 64+st
-        bra.s   ep_clamp
-ep_tune: moveq   #64,%d0
-        addl    %d3,%d0                 | TUNE: 64+st, octave-folded into range
-ep_tlo: moveq   #TUNE_LO,%d1
-        cmpl    %d1,%d0
-        bge.s   ep_thi
+        lea     ef_pk_tab,%a0
+        movel   %d1,%d0
+        lsll    #2,%d0
+        adda.l  %d0,%a0
+        moveq   #0,%d0
+        moveb   1(%a0),%d0
+        addl    %d3,%d0                 | centre+st
+        subql   #1,%d1
+        beq.s   ep_clamp                | FM/SY/CX clamp to 0..127
+        moveq   #0,%d1
+        moveb   2(%a0),%d1              | lo: fold up by octaves
+ep_tlo: cmpl    %d1,%d0
+        bge.s   ep_thi0
         addil   #12,%d0
         bra.s   ep_tlo
-ep_thi: moveq   #TUNE_HI,%d1
-        cmpl    %d1,%d0
+ep_thi0:
+        moveb   3(%a0),%d1              | hi: fold down by octaves
+ep_thi: cmpl    %d1,%d0
         ble.s   ep_ok
         subil   #12,%d0
         bra.s   ep_thi
@@ -3941,7 +3959,7 @@ ep_ok:  movel   (%sp)+,%d4              | pulses
         bra.s   ep_store
 ep_clear_rad:
         movel   (%sp)+,%d0              | drop base_st
-        movel   (%sp)+,%d0              | drop is_synth
+        movel   (%sp)+,%d0              | drop pitch kind
         movel   (%sp)+,%d4
         movel   (%sp)+,%d6
         movel   (%sp)+,%d5
@@ -4550,12 +4568,14 @@ ecc_done:
         movel   (%sp)+,%d2
         rts
 
-| ef_is_synth: d0 := 1 when ef_trk's Part NEIGHBOR sig is "FM",1 / "SY",1
-| / "CX",1 (same semitone encoding as qz_is_synth / qz_fmtrack); 2 for a
-| FLEX track signed "TB",1 (OCTA-303) or "WV",1 (WAVE CF), whose slot-0
-| TUNE is semitones in raw TUNE_LO..TUNE_HI. Else 0.
+| ef_pitch_kind: d0 := how ef_trk's slot 0 encodes pitch (ef_pk_tab row).
+|  0 STATIC / FLEX / PICKUP sample PTCH, 5 raw a semitone around 64.
+|  1 sig "FM",1 / "SY",1 / "CX",1: raw 64+st (qz_is_synth / qz_fmtrack).
+|  2 FLEX signed "TB",1 (OCTA-303) or "WV",1 (WAVE CF): TUNE, 64 = C3.
+|  3 FLEX signed "OT",1 (BLKPYRAMD): PTCH 0..96, 0 = C0.
+| -1 no pitch on slot 0 (THRU, NEIGHBOR, ANALOG BD "AB", DRUMMER "DR").
 | Clobbers d0/d1/a0/a1 only - caller parks what it needs.
-ef_is_synth:
+ef_pitch_kind:
         moveal  DBPTR,%a0
         moveq   #0,%d0
         moveb   UI_PART,%d0
@@ -4566,35 +4586,55 @@ ef_is_synth:
         mulu.w  #30,%d0
         lea     %a0@(0,%d0:l),%a1
         addal   #SIG_OFF,%a1            | NEIGHBOR column
+        move.l  ef_trk,%d1
+        addal   %d1,%a0
+        addal   #MACH_OFF,%a0           | a0 = this track's machine byte
         moveq   #0,%d0
         moveb   2(%a1),%d0
         subql   #1,%d0
-        bne.s   eis_no                  | not kind 1
+        bne.s   epk_stock               | not kind 1
         moveq   #0,%d0
         movew   (%a1),%d0
         cmpil   #0x464d,%d0             | "FM"
-        beq.s   eis_yes
+        beq.s   epk_synth
         cmpil   #0x5359,%d0             | "SY"
-        beq.s   eis_yes
+        beq.s   epk_synth
         cmpil   #0x4358,%d0             | "CX"
-        beq.s   eis_yes
+        beq.s   epk_synth
+        moveq   #2,%d1
         cmpil   #0x5442,%d0             | "TB"
-        beq.s   eis_tune
+        beq.s   epk_flex
         cmpil   #0x5756,%d0             | "WV"
-        bne.s   eis_no
-eis_tune:
-        move.l  ef_trk,%d1
-        lea     %a0@(0,%d1:l),%a1       | a0 = Part
-        addal   #MACH_OFF,%a1
+        beq.s   epk_flex
+        moveq   #3,%d1
+        cmpil   #0x4f54,%d0             | "OT"
+        beq.s   epk_flex
+        moveq   #-1,%d1
+        cmpil   #0x4142,%d0             | "AB"
+        beq.s   epk_flex
+        cmpil   #0x4452,%d0             | "DR"
+        bne.s   epk_stock
+epk_flex:
         moveq   #0,%d0
-        moveb   (%a1),%d0
+        moveb   (%a0),%d0
         subql   #1,%d0                  | FLEX
-        bne.s   eis_no
-        moveq   #2,%d0
+        bne.s   epk_stock               | a stale sig on another machine
+        movel   %d1,%d0
         rts
-eis_yes: moveq   #1,%d0
+epk_synth:
+        moveq   #1,%d0
         rts
-eis_no: moveq   #0,%d0
+epk_stock:
+        moveq   #0,%d0
+        moveb   (%a0),%d0
+        subql   #2,%d0                  | THRU
+        beq.s   epk_none
+        subql   #1,%d0                  | NEIGHBOR
+        beq.s   epk_none
+        moveq   #0,%d0
+        rts
+epk_none:
+        moveq   #-1,%d0
         rts
 
 | d2=step, a2=trac -> a0=&byte, d0=bitmask. Clobbers d0,d1,a0.
@@ -5527,6 +5567,13 @@ ef_scale_masks:
 ef_scale_counts:
         .byte 7,7,5,7,7,7,6,12
         .balign 4
+| ef_pitch_kind rows: max radius, raw of st 0 (a C on the semitone
+| machines, so SEQ's ROOT matches the note names), lowest raw, highest raw.
+ef_pk_tab:
+        .byte PIT_SAMP, 64, 0, 127              | sample PTCH (5 raw a semitone)
+        .byte PIT_RAD, 64, 0, 127               | FM / SY / CX
+        .byte PIT_TUNE, 64, TUNE_LO, TUNE_HI    | OCTA-303 / WAVE CF TUNE
+        .byte PIT_TUNE, BP_C5, 0, BP_HI         | BLKPYRAMD PTCH
 | SEQ mark 29×29: 3 rings E(4,12) LED; mid hollow squares at 45°.
 | Column-major; bit 31 = bottom row.
 ef_icon_bmp:
