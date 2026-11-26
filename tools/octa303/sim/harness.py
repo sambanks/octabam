@@ -83,7 +83,8 @@ class Rig:
         return [self.cpu.mem.r(VOICE_BASE + VSTR * track + 64 + 4 * i, 'l') for i in range(5)]
     def _stock(self, cpu):
         m = cpu.mem
-        args = [m.r(cpu.a[7] + 4 * i, 'l') for i in range(4)]
+        sp = cpu.a[7] + (4 if cpu.via_jmp else 0)    # o3_render's fast path enters by jmp
+        args = [m.r(sp + 4 * i, 'l') for i in range(4)]
         words = [m.r(FRAME + 2 * i, 'w') for i in range(6)]
         self.seen.append((args, words))
         t, n = args[0], args[3] - args[2]

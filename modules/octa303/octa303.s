@@ -335,8 +335,7 @@
         sub.l   %d1,\reg
         .endm
         .macro  KB off, areg            | d0 = the knob byte at off(areg), clamped 0..127
-        moveq   #0,%d0
-        move.b  \off(\areg),%d0
+        mvz.b   \off(\areg),%d0
         cmp.l   #127,%d0
         bls     .Lkb\@
         moveq   #127,%d0
@@ -354,10 +353,21 @@
         move.l  (%a1,%d0.l*4),%d1
         move.l  %d1,\dst(%a3)
         .endm
-        .macro  RAWW off, dst
-        moveq   #0,%d0
-        move.w  \off(%a4),%d0
-        lsr.l   #8,%d0
+| KBTAB and TABNEXT: KB then TABs with no address-use stall (MCF54455RM 3.3.5.1). KBTAB sets a1 before KB reads
+| the byte, so a1 is not used by the instruction after its write; TABNEXT stores the last table's long between
+| the next table's lea and its load. The longs stored are TAB's; the last one is stored by the caller.
+        .macro  KBTAB off, areg, tab    | d0 = the knob byte at off(areg) (KB), d1 = tab[d0]
+        lea     \tab,%a1
+        KB      \off,\areg
+        move.l  (%a1,%d0.l*4),%d1
+        .endm
+        .macro  TABNEXT prev, tab       | prev(a3) = d1, then d1 = tab[d0]
+        lea     \tab,%a1
+        move.l  %d1,\prev(%a3)
+        move.l  (%a1,%d0.l*4),%d1
+        .endm
+        .macro  RAWW off, dst           | dst = the word at off(a4) >> 8, clamped 0..127: its high byte
+        mvz.b   \off(%a4),%d0
         cmp.l   #127,%d0
         bls     .Lrw\@
         moveq   #127,%d0
@@ -383,6 +393,32 @@ o3_render:
         .else
 sy_render:
         .endif
+| A call that cannot make this track OCTA303's goes straight to the stock renderer, before the register frame:
+| the track is not latched, and either this is not the frame's last call or no voice starts on it this frame
+| (the full path below then only calls the stock renderer and returns its value). The stock renderer finds the
+| same four arguments at the same offsets and returns to our caller; d1, a0, a1 and the flags are a call's
+| scratch, as after any stock call.
+        move.l  4(%sp),%d0              | track
+        moveq   #NTRACKS-1,%d1
+        cmp.l   %d1,%d0
+        bhi     .Lfast                  | (never: the packer renders tracks 0..7; the full path only calls stock)
+        move.l  %d0,%d1
+        lsl.l   #8,%d1                  | track * ST_SIZE (512: 8 + 1)
+        add.l   %d1,%d1
+        lea     o3_state,%a0
+        add.l   %d1,%a0
+        moveq   #16,%d1                 | here, between the add and the load: no address-use stall
+        tst.l   S_LATCHED(%a0)
+        bne     .Lfull                  | latched: the full path
+        cmp.l   16(%sp),%d1             | the frame's last call?
+        bne     .Lfast
+        lea     NIBBLE,%a0
+        add.l   %d0,%a0
+        btst    #4,(%a0)                | a voice starts this frame: the full path decides whose sample
+        bne     .Lfull
+.Lfast:
+        jmp     STOCK_RENDER
+.Lfull:
         lea     -48(%sp),%sp
         movem.l %d2-%d7/%a2-%a6,(%sp)
         move.l  CURSOR,%a2              | the header this call writes
@@ -443,8 +479,8 @@ sy_render:
         move.w  %d0,(%a4)
         move.l  #NEUTRAL_RATE,%d0
         move.w  %d0,6(%a4)
+        lea     S_POS(%a3),%a1          | (before the call, which keeps a1: no address-use stall)
         bsr     o3_voice                | a0 = the voice's position fields
-        lea     S_POS(%a3),%a1
         move.l  (%a0)+,(%a1)+
         move.l  (%a0)+,(%a1)+
         move.l  (%a0)+,(%a1)+
@@ -457,10 +493,10 @@ sy_render:
         move.l  64(%sp),-(%sp)          | ping
         move.l  64(%sp),-(%sp)          | track
         jsr     STOCK_RENDER
-        lea     16(%sp),%sp
-        move.l  %d0,44(%sp)             | the stock return value, handed back
-        move.l  52(%sp),%d2
+        move.l  %d0,60(%sp)             | the stock return value, handed back (44(%sp) after the pop);
+        lea     16(%sp),%sp             | stored before the pop and the moveq between: no sp stall
         moveq   #NTRACKS-1,%d0
+        move.l  52(%sp),%d2
         cmp.l   %d0,%d2
         bhi     .Ldone
         tst.l   %d4
@@ -469,8 +505,8 @@ sy_render:
         move.w  %d0,(%a4)
         move.w  S_WRATE+2(%a3),%d0
         move.w  %d0,6(%a4)
+        lea     S_POS(%a3),%a1          | (before the call, which keeps a1: no address-use stall)
         bsr     o3_voice                | pin the carrier: the positions as they were before the call
-        lea     S_POS(%a3),%a1
         move.l  (%a1)+,(%a0)+
         move.l  (%a1)+,(%a0)+
         move.l  (%a1)+,(%a0)+
@@ -570,15 +606,31 @@ sy_render:
         bcs     .Lsq1
         neg.l   %d6
 .Lsq1:
+        cmp.l   %d5,%d4                 | each edge's polyBLEP only within one increment of it,
+        bcs     .Lsqb1                  | as the saw: o3_blep's own test, so far from an edge
+        move.l  %d4,%d0                 | the call (which returns 0) is skipped
+        neg.l   %d0
+        cmp.l   %d5,%d0
+        bcc     .Lsqe1
+.Lsqb1:
         move.l  %d4,%d0
         bsr     o3_blep
         lsl.l   #5,%d0
         add.l   %d0,%d6
+.Lsqe1:
         move.l  %d4,%d0
         sub.l   S_SQTH(%a3),%d0         | the falling edge at phase = S_SQTH
+        cmp.l   %d5,%d0
+        bcs     .Lsqb2
+        neg.l   %d0
+        cmp.l   %d5,%d0
+        bcc     .Lsqe2
+        neg.l   %d0                     | the edge's distance back
+.Lsqb2:
         bsr     o3_blep
         lsl.l   #5,%d0
         sub.l   %d0,%d6
+.Lsqe2:
         FM78    %d6,K_SQ(%a5)
         move.l  %d6,%d0                 | v6.9: the 303's square has soft edges, a one-pole lowpass
         sub.l   S_SQL(%a3),%d0
@@ -743,8 +795,7 @@ sy_render:
         move.l  #OSAT_OUT,%d2
         muls.l  %d2,%d6
         asr.l   #8,%d6
-        asr.l   #1,%d6
-        asr.l   #SHIFT_OUT,%d6
+        asr.l   #1+SHIFT_OUT,%d6        | >> 1, then the output shift, in one (1-8: SHIFT_OUT at most 7)
         CLAMP   %d6,-32767,32767
         lsl.l   #8,%d6
         lsl.l   #8,%d6
@@ -762,9 +813,8 @@ sy_render:
 o3_voice:
         move.l  #VOICE_STRIDE,%d0
         muls.l  %d2,%d0
-        lea     VOICE_BASE,%a0
+        lea     VOICE_BASE+V_POS,%a0    | (V_POS folded in: no lea through the a0 just written)
         add.l   %d0,%a0
-        lea     V_POS(%a0),%a0
         rts
 
 | ---- o3_marker: track d2's starting voice -> d0 = name code or -1 (poly.s sy_render's scan:
@@ -1440,9 +1490,9 @@ o3_setup:
         moveq   #FINE_Q8,%d1
         muls.l  %d1,%d0
         move.l  %d0,S_FINE(%a3)
-        KB      4,%a0                   | DRIV
-        TAB     O3_DRV_IN,S_OSIN
-        TAB     O3_DRV_LIM,S_OSLIM
+        KBTAB   4,%a0,O3_DRV_IN         | DRIV
+        TABNEXT S_OSIN,O3_DRV_LIM
+        move.l  %d1,S_OSLIM(%a3)
         KB      1,%a0                   | GATE: 0 OFF, >= 1 303
         tst.l   %d0
         beq     .Lsu_g
@@ -2555,8 +2605,8 @@ o3_inc:
         swap    %d1
         and.l   #0xFFFF,%d1
         lsr.l   #2,%d1
-        and.l   #0xFFFF,%d0
         lea     O3_INC_TAB,%a0
+        and.l   #0xFFFF,%d0             | here, between the lea and the load: no address-use stall
         move.l  (%a0,%d1.l*4),%d1
         lsl.l   %d0,%d1
         move.l  %d1,%d0
@@ -2704,10 +2754,10 @@ o3_params:
         add.l   %d1,%a0
         bsr     o3_vrec                 | v7.1: page 1 as the DSP gets it (locks, scenes, LFOs)
 .Lp_have:
-        KB      0,%a0                   | OVDR
-        TAB     O3_DF_GIN,S_GIN
-        TAB     O3_DF_OCOMP,S_OCOMP
-        TAB     O3_DF_OGAIN,S_OGAIN
+        KBTAB   0,%a0,O3_DF_GIN         | OVDR
+        TABNEXT S_GIN,O3_DF_OCOMP
+        TABNEXT S_OCOMP,O3_DF_OGAIN
+        move.l  %d1,S_OGAIN(%a3)
         moveq   #0,%d1
         cmp.l   #DF_GIN_Q15,%d0
         bhi     .Lp_g
@@ -2718,17 +2768,17 @@ o3_params:
         move.l  #DF_FM_MUL,%d1
         muls.l  %d1,%d0
         move.l  %d0,S_FMQ(%a3)
-        KB      2,%a0                   | TRCK
-        TAB     O3_DF_TRK_HZ,S_TRKHZ
-        KB      3,%a0                   | VDEC
-        TAB     O3_DF_VEG,S_VEGD
-        TAB     O3_DF_VSUS,S_VSUS
-        KB      4,%a0                   | SLID
-        TAB     O3_DF_SLIDE,S_SLIDE
-        KB      5,%a0                   | ADEC
-        TAB     O3_DF_ADEC,S_ADEC
-        KB      0,%a2                   | SATK (0: none, v6.1's instant attack)
-        TAB     O3_DF_SATK,S_SATK
+        KBTAB   2,%a0,O3_DF_TRK_HZ      | TRCK
+        move.l  %d1,S_TRKHZ(%a3)
+        KBTAB   3,%a0,O3_DF_VEG         | VDEC
+        TABNEXT S_VEGD,O3_DF_VSUS
+        move.l  %d1,S_VSUS(%a3)
+        KBTAB   4,%a0,O3_DF_SLIDE       | SLID
+        move.l  %d1,S_SLIDE(%a3)
+        KBTAB   5,%a0,O3_DF_ADEC        | ADEC
+        move.l  %d1,S_ADEC(%a3)
+        KBTAB   0,%a2,O3_DF_SATK        | SATK (0: none, v6.1's instant attack)
+        move.l  %d1,S_SATK(%a3)
         KB      1,%a2                   | SWP: ACID 0 -> 2 (the 303), WHST 1 -> 1, SELF 2 -> 0
         MIN2
         moveq   #2,%d1
@@ -2759,8 +2809,8 @@ o3_params:
         cmp.l   %a1,%a0
         bne     .Lp_ns
         bsr     o3_setupptr
-        KB      3,%a0
-        TAB     O3_DF_SLIDE,S_SLIDE
+        KBTAB   3,%a0,O3_DF_SLIDE
+        move.l  %d1,S_SLIDE(%a3)
 .Lp_ns:
         move.l  (%sp)+,%a2
         rts
@@ -2825,12 +2875,10 @@ o3_ctrl:
         move.l  %d1,%d0
         asr.l   #8,%d0
         bsr     o3_inc
-        move.l  %d0,S_INC(%a3)
-        move.l  S_PCUR(%a3),%d0         | v6.6: the square's duty by semitone (ref303: SQ_TH[pcur >> 16])
-        asr.l   #8,%d0
-        asr.l   #8,%d0
-        lea     O3_SQ_TH,%a0
-        move.l  (%a0,%d0.l*4),%d0
+        mvs.w   S_PCUR(%a3),%d1         | v6.6: the square's duty by semitone (ref303: SQ_TH[pcur >> 16]):
+        lea     O3_SQ_TH,%a0            | pcur >> 16 is its high word, sign-extended (d1 is free until .Lc_m)
+        move.l  %d0,S_INC(%a3)          | here, between the lea and the load: no address-use stall
+        move.l  (%a0,%d1.l*4),%d0
         move.l  %d0,S_SQTH(%a3)
         tst.l   S_ACCD(%a3)             | MEG: ADEC on accented notes, DEC otherwise
         beq     .Lc_n
@@ -2895,9 +2943,9 @@ o3_ctrl:
         beq     .Lc_sl
         cmp.l   %d1,%d4                 | FAST: charge fast, read the change
         ble     .Lc_f1
+        lea     O3_DF_ACH_FAST,%a0      | (each table's lea two before its load below: no address-use stall)
         move.l  %d4,%d0
         sub.l   %d1,%d0
-        lea     O3_DF_ACH_FAST,%a0
         move.l  (%a0,%d5.l*4),%d2
         MULQ15  %d0,%d2,%d3
         add.l   %d0,%d1
@@ -2919,9 +2967,9 @@ o3_ctrl:
 .Lc_sl:
         cmp.l   %d1,%d4                 | SLOW: charge and drain slower, read it doubled
         ble     .Lc_s2
+        lea     O3_DF_ACH_SLOW,%a0
         move.l  %d4,%d0
         sub.l   %d1,%d0
-        lea     O3_DF_ACH_SLOW,%a0
         move.l  (%a0,%d5.l*4),%d2
         MULQ15  %d0,%d2,%d3
         add.l   %d0,%d1
@@ -2938,9 +2986,9 @@ o3_ctrl:
 .Lc_nm:
         cmp.l   %d1,%d4                 | NORM, the 303: charge through the diode...
         ble     .Lc_c
+        lea     O3_TB_ACH,%a0
         move.l  %d4,%d0
         sub.l   %d1,%d0
-        lea     O3_TB_ACH,%a0
         move.l  (%a0,%d5.l*4),%d2
         MULQ15  %d0,%d2,%d3
         add.l   %d0,%d1
@@ -2952,13 +3000,13 @@ o3_ctrl:
         move.l  %d1,S_CAP(%a3)
         move.l  %d1,%d0
 .Lc_sw:
+        lea     O3_TB_SWDIRECT,%a0
         move.l  %d0,-(%sp)              | sweep = direct part + capacitor part (2nd res gang)
         move.l  %d4,%d6
-        lea     O3_TB_SWDIRECT,%a0
         move.l  (%a0,%d5.l*4),%d2
         MULQ15  %d6,%d2,%d3
-        move.l  (%sp)+,%d0
         lea     O3_TB_SWCAP,%a0
+        move.l  (%sp)+,%d0
         move.l  (%a0,%d5.l*4),%d2
         MULQ15  %d0,%d2,%d3
         add.l   %d0,%d6
@@ -2968,10 +3016,10 @@ o3_ctrl:
         lea     O3_TB_SLO,%a0
         move.l  (%a0,%d0.l*4),%d1
         lea     O3_TB_SHI,%a0
+        move.l  #258,%d3                | here, between the lea and the load
         move.l  (%a0,%d0.l*4),%d2
         sub.l   %d1,%d2
         muls.l  %d5,%d2
-        move.l  #258,%d3
         muls.l  %d3,%d2
         asr.l   #8,%d2
         asr.l   #7,%d2
