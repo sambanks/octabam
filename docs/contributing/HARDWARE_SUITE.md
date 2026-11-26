@@ -125,28 +125,35 @@ Failures found while running the suite on earlier images, and the module sets th
 a unit yet.
 
 ```bash
-python3 tools/hw/ot_v06.py run --names "A.RMX,B.RMX" --cycles 20 --label v06-1
+.venv/bin/python3 tools/hw/ot_v06_build.py build out/v06b          # three projects + v06.json
+.venv/bin/python3 tools/hw/ot_v06.py suite --dest out/v06b         # images, projects, matrix runs, DISK MODE read, boots
 ```
 
-| check | issue / PR | pass when |
-|---|---|---|
-| `switch` | #1247, #1233, #1272 | every COMMAND 3 returns within 150 s, the running image is the one asked for, MB_PARK (`0x41200038`) reads 3, the DSP frame count advances |
-| `diskread` | #1264 | no 64 KB block of one file differs between 6 reads; none starts `0f f8 00 00` in one read only |
+The images are `OCTABAM T1` (`octabam`), `V06-RIG T1` (`remixes/test/v06-rig`: CX OSC, VCA160, KEYBUS, REMOTE, USB,
+REMIX SWITCH), `OCTABAM-VRB T1` (`octabam-verbs`) and `STOCK 1.40C`, built with `make image REMIX=octabam BUILD=T1`
+and `make rmx REMIX=<remix> BUILD=T1`. `OCTABAM T1` is flashed; the rest are `.RMX` files in `/BRAIN/REMIXES`.
+No shipping remix carries CX OSC or VCA160, and the test remixes lack REMOTE, USB and REMIX SWITCH.
+
+| check | issue | project / image | pass when |
+|---|---|---|---|
+| boots | #1247, #1233, #1272 | every image change | COMMAND 3 returns within 150 s, the image asked for runs, MB_PARK (`0x41200038`) reads 3, the DSP counts |
+| `diskread` | #1264 | any project, CLOCK SEND on | no 64 KB block of one file differs between 6 reads; none starts `0f f8 00 00` in one read only |
+| OCTA303 T1+T2 | #1270 | `V06_OCT` / `octabam` | slot plays above -70 dBFS RMS, no flag |
+| WAVE T1+T2 | #1232 | `V06_OCT` / `octabam` | as above; no RINGS (tail silent after STOP) |
+| CX OSC T1 | #1263 | `V06_RIG` / `V06-RIG` | as above; no CLICKS |
+| VCA160 FX1, FX2 (def, dear) | #1219 | `V06_RIG` / `V06-RIG` | no flag |
+| VERBERATION FX2 (def, dear, modes 0, 2, 3) | #1234 | `V06_VRB` / `octabam-verbs` | no flag; RINGS is the stop kill |
+
+A machine slot is a FLEX track signed with the machine's Part signature, `Part + 0x3c + 30 * track`; the file offset
+(PART_BASE + 9 + 0x3c + 30 * track) is inferred from the port gates' RAM offsets, and a slot that reads silent is
+the symptom of a miss. The machines' PLAYBACK and SETUP values are the module's seeds: nothing writes them, so
+#1263's FOLD at DEC HOLD is not set by the project. Each pass is only a flag-free matrix run: LEVEL, STATIC and
+the other flags compare the slot with BASE, which has stimulus audio and no machine.
 
 A boot that does not return is the boot-screen stop of #1247; the run stops, and the unit needs a power-cycle.
-`out/hw/boot_ledger.tsv` has every attempt. The other output is `out/hw/v06/<label>/summary.json`.
+`out/hw/boot_ledger.tsv` has every attempt. Output: `out/hw/v06/<label>/summary.json` and the matrix reports under
+`out/hw/matrix/`.
 
-Preconditions: the names are in `/BRAIN/REMIXES` (`ot_card.py copy`); for `diskread` the project's CLOCK SEND is on
-and the sequencer is playing when COMMAND 1 is sent.
-
-Not reachable over the cable (a panel gesture, or no host-visible result), by `needs unit test` item:
-
-| item | why |
-|---|---|
-| #1246 AED freeze on open | opening AED is a panel action |
-| #1263 CX OSC FOLD clicks | click detection needs the voice playing on a track; no stimulus project for CX OSC |
-| #1255 FRAME GUARD 140 µs | needs MKI with 8 recorders and 8 voices; clicks at bar starts |
-| #1251, #1252 TEMPLATES | panel pages |
-| #1250 TEMPO BUS copy/paste, #1229 TEMPO BUS scene locks | FUNC+REC, FUNC+STOP and scene keys |
-| #1232 WAVE STOP | WAVE machine on a track; stop-edge voices in the USB audio, no phase yet |
-| #1234 VERBERATION, #1219 KEYBUS, #1266 MIDI LOOPBACK, #1270 OCTA303 | audio or MIDI observable over the cable; no phase written yet |
+Not reachable over the cable (panel gestures, or no host-visible result): #1246 (AED), #1251 and #1252 (TEMPLATES),
+#1250 and #1229 (TEMPO BUS copy, paste and scene locks), #1255 (FRAME GUARD on an MKI with 8 recorders and 8 voices),
+#1219's KEY routing (no KEY value is set), #1266 (what MIDI LOOPBACK echoes is not written down).

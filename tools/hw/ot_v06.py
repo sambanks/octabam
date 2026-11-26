@@ -19,6 +19,14 @@ CLOCK SEND on). The file must be larger than 128 sectors (64 KB); default: the l
 /Volumes/OCTATRACK/PRESETS. The corruption needs the unit to be sending USB MIDI clock, so the project's CLOCK SEND
 must be on and the sequencer playing when COMMAND 1 is sent.
 
+`suite` runs everything, in this order, stopping at the first failure that needs a power-cycle:
+  for each of V06_OCT on `OCTABAM T1`, V06_RIG on `V06-RIG T1`, V06_VRB on `OCTABAM-VRB T1`: boot the image (a
+  switch, with MB_PARK and the health check), load the project over DISK MODE, run `ot_matrix.py run` on it; then
+  `diskread`, then 12 more boots round the three images. The projects come from `ot_v06_build.py build`.
+  A layout fails on CRASH, FREEZE, UNHEALTHY, OVERLOAD, DROPS, NO AUDIO CAPTURED, or any other flag ot_matrix
+  raises (CLICKS, ROUGH, RINGS: a tail still sounding after STOP, LEVEL, ...); a machine slot also fails below
+  -70 dBFS RMS (the machine did not play).
+
 `run` is `switch`, then `diskread`, then `switch` again, and writes out/hw/v06/<label>/summary.json.
 
 macOS only (ot_card.py: diskutil, /Volumes/OCTATRACK). Needs an image with REMOTE, STORE, USB and REMIX SWITCH,
@@ -100,9 +108,22 @@ def blocks(path):
             out.append((hashlib.sha1(b).hexdigest(), b[:4]))
 
 
-def diskread(path, reads):
+def diskread(path, reads, play=True):
+    """With `play`, the unit is started first on a host clock (the project has CLOCK SEND on and clock and transport
+    receive on), so it is sending USB MIDI clock when COMMAND 1 is sent."""
+    import ot_ladder
+    clock = ot_ladder.Clock(120.0, "Octatrack") if play else None
+    if clock:
+        clock.start()
+        time.sleep(2.0)
     u = ot_card.Unit()
-    ot_card.enter_disk(u)
+    try:
+        ot_card.enter_disk(u)
+    except BaseException:
+        if clock:
+            clock.stop()
+            clock.close()
+        raise
     try:
         if path is None:
             path, size = largest(os.path.join(ot_card.CARD, "PRESETS"))
@@ -118,10 +139,88 @@ def diskread(path, reads):
         res = dict(file=path, bytes=os.path.getsize(path), blocks=n, reads=reads, differing_blocks=differ,
                    marked_blocks=marked, pass_=not differ and not marked)
     finally:
+        if clock:
+            clock.stop()
+            clock.close()
         ot_card.leave_disk(u)
     print(f"diskread {path}: {n} blocks x {reads} reads, {len(differ)} differing, {len(marked)} with 0f f8 00 00 in one read only: "
           f"{'PASS' if res['pass_'] else 'FAIL'}", flush=True)
     return res, res["pass_"]
+
+
+IMAGES = (("V06_OCT", "OCTABAM T1.RMX"), ("V06_RIG", "V06-RIG T1.RMX"), ("V06_VRB", "OCTABAM-VRB T1.RMX"))
+FATAL = {"CRASH", "FREEZE", "UNHEALTHY", "OVERLOAD", "DROPS", "NO AUDIO CAPTURED"}
+SILENT_DB = -70.0
+PROJECT = "RMT_SFX_01"
+
+
+def sh(*args):
+    return subprocess.run([sys.executable, *map(str, args)], cwd=ROOT).returncode
+
+
+def judge_rows(results, plan):
+    """[(slot name, issues)] for one ot_matrix report: every flag, and a machine slot below SILENT_DB."""
+    kinds = {e["name"]: e.get("kind") for e in plan["layouts"]}
+    out = []
+    for r in results:
+        why = list(r["flags"])
+        m = r.get("metrics") or {}
+        if kinds.get(r["name"]) == "machine" and m.get("rms_db") is not None and m["rms_db"] < SILENT_DB:
+            why.append(f"SILENT {m['rms_db']:.0f} dBFS")
+        out.append((r["name"], why))
+    return out
+
+
+def suite(a):
+    dest = os.path.abspath(a.dest)
+    with open(os.path.join(dest, "v06.json")) as f:
+        projects = json.load(f)
+    summary, ok = {}, True
+    names = [img for _p, img in IMAGES]
+    for proj, img in IMAGES:
+        step = {"image": img}
+        summary[proj] = step
+        if sh(os.path.join(HERE, "ot_card.py"), "boot", img):
+            step["boot"] = "FAIL"
+            ok = False
+            print(f"{proj}: boot of {img} failed: stopped (power-cycle the unit if it is on the boot screen)")
+            break
+        step["boot"] = "ok"
+        if sh(os.path.join(HERE, "ot_card.py"), "load", projects[proj]["dir"], "--name", PROJECT):
+            step["load"] = "FAIL"
+            ok = False
+            break
+        label = f"{a.label}-{proj}"
+        rc = sh(os.path.join(HERE, "ot_matrix.py"), "run", projects[proj]["dir"], label)
+        with open(os.path.join(ROOT, "out", "hw", "matrix", label, "report.json")) as f:
+            report = json.load(f)
+        with open(os.path.join(projects[proj]["dir"], "OCTABAM_MATRIX.json")) as f:
+            plan = json.load(f)
+        rows = judge_rows(report["results"], plan)
+        step["layouts"] = {n: w or "ok" for n, w in rows}
+        step["ran"] = len(rows)
+        step["planned"] = len(plan["layouts"])
+        bad = [(n, w) for n, w in rows if w]
+        step["pass"] = not bad and len(rows) == len(plan["layouts"]) and rc in (0, 1)
+        for n, w in rows:
+            print(f"  {proj} {n}: {' '.join(w) or 'ok'}")
+        if not step["pass"]:
+            ok = False
+            if any(set(w) & FATAL for _n, w in bad):
+                print("a fatal flag: stopped")
+                break
+    else:
+        summary["diskread"], good = diskread(None, a.reads)
+        ok &= good
+        rows, good = switch(names, a.cycles)
+        summary["switch"] = rows
+        ok &= good
+    d = os.path.join(ROOT, "out", "hw", "v06", a.label)
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "summary.json"), "w") as f:
+        json.dump(summary, f, indent=1)
+    print(f"{'PASS' if ok else 'FAIL'}: {d}/summary.json")
+    return 0 if ok else 1
 
 
 def main():
@@ -135,12 +234,19 @@ def main():
             p.add_argument("--file")
             p.add_argument("--reads", type=int, default=6)
             p.add_argument("--label", default=time.strftime("%Y%m%d-%H%M%S"))
+    p = sub.add_parser("suite")
+    p.add_argument("--dest", default=os.path.join(ROOT, "out", "v06b"))
+    p.add_argument("--cycles", type=int, default=12)
+    p.add_argument("--reads", type=int, default=6)
+    p.add_argument("--label", default=time.strftime("%Y%m%d-%H%M%S"))
     p = sub.add_parser("diskread")
     p.add_argument("--file")
     p.add_argument("--reads", type=int, default=6)
     a = ap.parse_args()
     if a.cmd == "switch":
         return 0 if switch(a.names.split(","), a.cycles)[1] else 1
+    if a.cmd == "suite":
+        return suite(a)
     if a.cmd == "diskread":
         return 0 if diskread(a.file, a.reads)[1] else 1
     names = a.names.split(",")
