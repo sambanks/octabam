@@ -1,13 +1,13 @@
 # `pattern-mute` -- PATTERN MUTE
 
-Two mute layers, as on the Digitakt II (manual OS 1.17, section 8.5.3):
+Two mute layers, as on the Digitakt II (user manual, section 8.5.3 MUTE MODE; first cited as the OS 1.17 edition, read again in the OS 1.15A edition, `Digitakt-2-User-Manual_ENG_OS1.15A_250708.pdf`, on 18 Nov 2026):
 
 | layer | applies | saved |
 |---|---|---|
 | GLOBAL | every pattern | with the project (`TRACK_MUTE_MASK`, `MIDI_TRACK_MUTE_MASK` in `project.work`), and in the battery SRAM mirror |
 | PATTERN | the pattern it was set in | in `pmute.work` beside the bank files (a STORE client), and the current bank's in battery SRAM |
 
-A track is muted when either layer mutes it. Double-press FUNC, with no other key between the two presses, to choose the layer the next mute edit changes (toast `GLOBAL MUTE` / `PATTERN MUTE`). The edit is whichever stock path makes it: FUNC+track key, the MIXER trig keys, MIDI. The layer is kept in battery SRAM and survives power-off (GLOBAL on a unit with empty SRAM). While PATTERN is active the current track's key holds its second LED colour lit as well, so it shows both colours. The stock FUNC press still runs on every press.
+A track is muted when either layer mutes it. That rule is this module's reading of the manual, not something the manual states: see "What the Digitakt II manual says" below. Double-press FUNC, with no other key between the two presses, to choose the layer the next mute edit changes (toast `GLOBAL MUTE` / `PATTERN MUTE`). The edit is whichever stock path makes it: FUNC+track key, the MIXER trig keys, MIDI. The layer is kept in battery SRAM and survives power-off (GLOBAL on a unit with empty SRAM). While PATTERN is active the current track's key holds its second LED colour lit as well, so it shows both colours. The stock FUNC press still runs on every press.
 
 ## How it works
 
@@ -38,6 +38,25 @@ Stock keeps one mute state per project: bits 8-15 of `0x80000008` (audio tracks 
 
 - A pattern copy no longer carries its PATTERN mutes: they belong to the pattern slot, not the pattern data.
 - A project saved under 0.4 brings no PATTERN mutes: the bits it holds in byte 40 are one-shot trigs, and are left to be one-shots.
+
+## What the Digitakt II manual says
+
+Read in the OS 1.15A edition, section 8.5.3 and appendix B (18 Nov 2026). The OS 1.17 edition first cited above was not re-read.
+
+- GLOBAL: "the muted tracks are muted in all patterns", saved with the project. PATTERN: "the muted tracks are muted only in the active pattern", saved with the pattern.
+- **How the layers combine is not stated.** The manual does not say which layer wins when they disagree, or what an unmute in GLOBAL does to a track the PATTERN layer mutes. Its only statement about both is the LEDs: "If a track with trigs placed on it is muted in PATTERN MUTE and GLOBAL MUTE mode, its [TRACK] key blinks magenta in both modes when the pattern plays." So a track can be muted in both layers at once. That each layer mutes wherever it applies (this module's OR) is inferred from the two definitions.
+- A user reports that on stock Elektron boxes "global mute should supersede a pattern mute". It has not been checked on a Digitakt, and the manual does not settle it. A test on the unit that would: pattern-mute T3, switch to GLOBAL MUTE, unmute T3. Does T3 play, and is it still pattern-muted on returning to PATTERN MUTE?
+
+Where this module differs from the manual's description:
+
+| Digitakt II (manual 1.15A) | this module |
+|---|---|
+| A MUTE mode: [FUNC]+[TRK] enters GLOBAL, [FUNC]+double-[TRK] enters PATTERN, [FUNC]+[TRK] exits; the [TRIG] keys toggle mutes in it | no mode: double FUNC chooses the layer the next stock mute edit changes |
+| Every [TRACK] key lit green in GLOBAL, magenta in PATTERN; a muted track with trigs blinks green or magenta while the pattern plays (magenta when muted in both) | the second colour on the current track's key only, in PATTERN; no blinking |
+| Mutes can be prepared: hold [FUNC], press [TRIG] keys, they apply on release; the screen shows each track's state | no preparing, no overview |
+| Separate MIDI CCs: Mute (CC 94, per track) and Pattern Mute (CC 110) | a MIDI mute edit goes to the active layer |
+| "Remembers the last used version of MUTE mode"; QUICK MUTE follows it. Power-off not stated | the layer is kept in battery SRAM across power-off |
+| PATTERN mutes saved with the pattern | saved per pattern slot in `pmute.work`; a pattern copy does not carry them |
 
 ## Not done
 
