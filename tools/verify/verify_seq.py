@@ -616,7 +616,7 @@ def check_ui(src: str) -> None:
         ("0x17", "ef_trkkey"),
     ):
         check(f"key {code} -> {handler}",
-              re.search(rf"\.byte\s+{code},.*?\n\s*\.long\s+{handler}\b", keys, re.S)
+              re.search(rf"\.byte\s+{code},.*?\n\s*\.long\s+{handler}(_k)?\b", keys, re.S)
               is not None)
     check("ef_trkkey stashes ef_pending (no load/store on key path)",
           "ef_trkkey:" in src
@@ -634,8 +634,8 @@ def check_ui(src: str) -> None:
           "UI_WINDOW" in _block(src, "ef_trkkey:", "ef_dest_label:")
           or "0x460d175c" in _block(src, "ef_trkkey:", "ef_dest_label:"))
     check("EF_KEYS CUE/TRACK wire press and release (not swallow release)",
-          re.search(r"\.byte\s+0x2a,.*?\n\s*\.long\s+ef_cue,\s*ef_cue\b", keys, re.S)
-          and re.search(r"\.byte\s+0x10,.*?\n\s*\.long\s+ef_trkkey,\s*ef_trkkey\b", keys, re.S))
+          re.search(r"\.byte\s+0x2a,.*?\n\s*\.long\s+ef_cue(_k)?,\s*ef_cue(_k)?\b", keys, re.S)
+          and re.search(r"\.byte\s+0x10,.*?\n\s*\.long\s+ef_trkkey(_k)?,\s*ef_trkkey(_k)?\b", keys, re.S))
     check("ef_trkkey calls stock SEL_TRACK (sequencer view)",
           ("0x40083bf8" in _block(src, "ef_trkkey:", "ef_dest_label:")
            or "SEL_TRACK" in _block(src, "ef_trkkey:", "ef_dest_label:")))
@@ -667,18 +667,18 @@ def check_ui(src: str) -> None:
 
     encs = _block(src, "EF_ENCS:", "T_TITLE:")
     check("encoder A (0) -> ef_enc",
-          re.search(r"\.byte\s+0,\s*0[^\n]*\n\s*\.long\s+ef_enc\b", encs) is not None)
+          re.search(r"\.byte\s+0,\s*0[^\n]*\n\s*\.long\s+ef_enc(_k)?\b", encs) is not None)
     check("encoder B (1) -> ef_enc",
-          re.search(r"\.byte\s+1,\s*0[^\n]*\n\s*\.long\s+ef_enc\b", encs) is not None)
+          re.search(r"\.byte\s+1,\s*0[^\n]*\n\s*\.long\s+ef_enc(_k)?\b", encs) is not None)
     check("encoder C (2) -> ef_enc (LANE)",
-          re.search(r"\.byte\s+2,\s*0[^\n]*\n\s*\.long\s+ef_enc\b", encs) is not None
+          re.search(r"\.byte\s+2,\s*0[^\n]*\n\s*\.long\s+ef_enc(_k)?\b", encs) is not None
           and "L_LANE" in src and "ef_lane:" in src)
     check("encoder D (3) -> ef_enc",
-          re.search(r"\.byte\s+3,\s*0[^\n]*\n\s*\.long\s+ef_enc\b", encs) is not None)
+          re.search(r"\.byte\s+3,\s*0[^\n]*\n\s*\.long\s+ef_enc(_k)?\b", encs) is not None)
     check("encoder E (4) -> ef_enc",
-          re.search(r"\.byte\s+4,\s*0[^\n]*\n\s*\.long\s+ef_enc\b", encs) is not None)
+          re.search(r"\.byte\s+4,\s*0[^\n]*\n\s*\.long\s+ef_enc(_k)?\b", encs) is not None)
     check("encoder F (5) -> ef_enc (page-specific)",
-          re.search(r"\.byte\s+5,\s*0[^\n]*\n\s*\.long\s+ef_enc\b", encs) is not None)
+          re.search(r"\.byte\s+5,\s*0[^\n]*\n\s*\.long\s+ef_enc(_k)?\b", encs) is not None)
     check("encoder LEVEL (6) -> ef_level",
           re.search(r"\.byte\s+6,\s*0[^\n]*\n\s*\.long\s+ef_level\b", encs) is not None)
     enc = _block(src, "ef_enc:", "ef_level:")
