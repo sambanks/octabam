@@ -6,8 +6,8 @@ lock page 1 only; the page-2 knobs (slots 6–11) had no scene lock.
 Open an FX1 or FX2 page 2 (its SETUP window: press FX1 or FX2 twice),
 hold scene A or B and turn a knob on slots 6–11: the lock goes to the
 held scene. Hold FUNC while turning to remove
-the lock. With a scene held, the page-2 dials show that scene's lock, as
-the page-1 dials do.
+the lock. With a scene held, the page-2 dials show that scene's locks
+highlighted, as the page-1 dials do, and follow a turn at once.
 
 - A scene holds eight page-2 locks across its tracks (128 a Part); a
   scene with all eight taken drops a turn that would add a ninth.

@@ -404,8 +404,64 @@ def main():
           len(mine_b) == 1 and sum(c != EMPTY for c in got_b) == 1)
     check(f"panel: the Part's slot 3 byte ({part[3]}) is the knob's ({knob3}): scene B's turn went to the lock",
           bool(mine_b) and part[3] == knob3)
+    display(image, card, a.set_name, a.name, value_slot, value_name, check)
     print(f"verify_scenes_p2: {'FAIL' if fails else 'ok'} ({fails} failure(s))")
     return 1 if fails else 0
+
+
+def display(image, card, set_name, project, slot, name, check):
+    """The FX2 SETUP window while a scene key is held, from the panel's own pixels (no RAM writes, no draw
+    calls): a page-2 lock is drawn at once and highlighted, as a page-1 scene lock is, and the window shows
+    the Part again at the key's release and the lock again at its hold event. Until 25 Nov 2026 the window
+    kept the Part's look until it next drew itself (the key's release), and never highlighted a lock."""
+    sys.path[:0] = [str(ROOT / "tools/verify"), str(ROOT / "tools/panel")]
+    from stems_panel import MenuPort
+    run_card = OUT / "display-card.img"
+    shutil.copy2(card, run_card)
+    grid = (60, 10, 128, 64)                       # SETUP's six page-2 dials
+
+    def crop(p):
+        x0, y0, x1, y1 = grid
+        return tuple(v for row in p.screen()[y0:y1] for v in row[x0:x1])
+
+    def until(p, want, ms):
+        """ms until the dials match `want` (a predicate), at 10 ms steps, or None."""
+        for t in range(10, ms + 1, 10):
+            p.run(10)
+            if want(crop(p)):
+                return t
+        return None
+
+    with MenuPort(image, run_card, set_name, project, True, log_path=OUT / "display.log",
+                  extra=("--load-ms", "90000")) as p:
+        p.settle()
+        p.press("t1", settle=300)
+        p.press("pg_fx2", hold=180, settle=180)
+        p.press("pg_fx2", hold=30, settle=30)
+        p.press("pg_fx2", hold=180, settle=400)
+        check("display: the FX2 SETUP window is open", p.long(0x460d1684) == 4 and p.long(0x460d175c) != 0)
+        p.run(2500)                                # the last turn's animation over
+        part = crop(p)
+        p.key("scene_a", True)
+        p.run(400)                                 # past the hold event
+        check("display: SCENE A held with no page-2 lock: the dials are the Part's", crop(p) == part)
+        p.proc.command(f"knob {48 + slot} 3", "ok")
+        ink = sum(1 for v in part if v)
+        t = until(p, lambda c: c != part and sum(1 for v in c if v) > ink + 40, 300)
+        check(f"display: SCENE A + knob {name}: the lock drawn highlighted within 300 ms ({t} ms)", t is not None)
+        p.run(2500)
+        locked = crop(p)
+        check("display: the highlighted lock stays after the turn's animation",
+              sum(1 for v in locked if v) > ink + 40)
+        p.key("scene_a", False)
+        t = until(p, lambda c: c == part, 300)
+        check(f"display: SCENE A let go: the Part's dials again within 300 ms ({t} ms)", t is not None)
+        p.run(500)
+        p.key("scene_a", True)
+        t = until(p, lambda c: c == locked, 600)
+        check(f"display: SCENE A held again: the lock at the hold event ({t} ms)", t is not None and locked != part)
+        p.key("scene_a", False)
+        p.run(300)
 
 
 if __name__ == "__main__":
