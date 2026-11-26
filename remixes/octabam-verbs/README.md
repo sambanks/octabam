@@ -49,5 +49,5 @@ effect and has no such words; octabam-bus's internal P is 584 words short of VIB
 FX1 lists SPECTRUM, CHARACTER, MODULATION, VIBRATO, TRANSIENT, RESONATOR, then the stock effects (17 rows).
 
 The demand loader, the core modules and the ColdFire modules are octabam's; its README describes them. SCALES,
-CHORDS FACTORY with PAGES, SCREEN, SLOW LFO, BAR LED and REC CS1 SKIP are here as in octabam.
+CHORDS FACTORY with PAGES, SCREEN, SLOW LFO, BAR LED, REC CS1 SKIP and APPLY SCENE are here as in octabam.
 

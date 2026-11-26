@@ -69,6 +69,7 @@ nav:
           - Track Patterns: reference/manual/sequencer/trackpatterns.md
           - Varispeed: reference/manual/sequencer/varispeed.md
       - Parts, Kits and scenes:
+          - Apply Scene: reference/manual/parts/apply-scene.md
           - Kits: reference/manual/parts/kits.md
           - MIDI Scenes: reference/manual/parts/midi-scenes.md
           - Morph: reference/manual/parts/morph.md

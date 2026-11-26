@@ -88,6 +88,7 @@ A module is one contribution: an effect, a machine, a sequencer or MIDI feature,
 
 | module | author | what it does |
 |---|---|---|
+| [**APPLY SCENE**](apply-scene/README.md) | [Skalskis](https://github.com/Skalskis) | SCENE A / B (or both) + YES: the scene's locks (or the crossfader's blend) become the Part's own, and those locks leave the assigned scenes. With SCENES P2, FX1 and FX2 page 2 as well. GRID RECORDING: SCENE pressed with trigs held writes them as step locks. TRACKS: the edited track or ALL for SCENE + YES. SCENE A + SCENE B + trig: the blend saved into that scene. |
 | [**EVENTS**](events/README.md) | [radiohagen](https://github.com/radiohagen) | System: transport and MIDI notifications, held-step ownership and copy notifications. |
 | [**KITS**](kits/README.md) | [Sam Banks](https://github.com/sambanks) | 255 Kits per project: PART = LOAD KIT, FUNC+PART = SAVE KIT (MKI: FUNC+MIDI, then FUNC+BANK); each pattern plays its Kit through the stock Part slots. |
 | [**MIDI SCENES**](midi-scenes/README.md) | [bkkbrls-del](https://github.com/bkkbrls-del) | Scene locks for the MIDI tracks (hold-to-lock, readout, unlock, lock LEDs, XF morph, scene clear / copy / paste), kept per Part in scenes.work and CS1. Port of bkkbrls-del's midisc project. |

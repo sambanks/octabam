@@ -35,6 +35,10 @@ d4 = track, d5 = part; d0 returns the value or −1 (read), 0 or −1 when
 the scene's eight cells are full (set). Every other register is kept.
 TEMPO BUS's page-2 rows use it through a weak reference.
 
+`p2s_changed` drops the frame pass's cache, so the next frame reads every
+track's cells again: for a unit that writes cells itself (APPLY SCENE).
+It clobbers d0, d1 and a0 only.
+
 ## What stock does
 
 The frame builder morphs one scene block a track per frame into the DSP

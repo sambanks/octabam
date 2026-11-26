@@ -650,6 +650,9 @@ ccommit:
         movel   %d0,0x100f8598
         jsr     DIRTY
 | pinval: the next frame re-reads every track's cells. Clobbers d0, d1, a0.
+| p2s_changed: the same for another unit that wrote cells (APPLY SCENE).
+        .globl  p2s_changed
+p2s_changed:
 pinval: lea     P2W,%a0
         moveq   #-1,%d0
         moveq   #8,%d1
