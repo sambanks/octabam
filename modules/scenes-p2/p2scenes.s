@@ -73,13 +73,11 @@ frame_hook:
         lea     P2W,%a4                | a4 = this track's cache row
         moveq   #0,%d7                 | d7 = track
 tloop:  lea     TRK_BANK,%a0
-        moveq   #0,%d0
-        moveb   %a0@(0,%d7:l),%d0      | bank
+        movel   #BANK_STRIDE,%d2       | here, between the lea and the load: no address-use stall
+        mvzb    %a0@(0,%d7:l),%d0      | bank
         cmpil   #0xff,%d0
         beq     tnext
-        moveq   #0,%d1
-        moveb   %a0@(8,%d7:l),%d1      | part
-        movel   #BANK_STRIDE,%d2
+        mvzb    %a0@(8,%d7:l),%d1      | part
         mulu.l  %d0,%d2
         movel   #PART_STRIDE,%d3
         mulu.l  %d1,%d3
@@ -88,15 +86,13 @@ tloop:  lea     TRK_BANK,%a0
         moveal  %d2,%a3                | a3 = the track's part window
         lsll    #8,%d0
         orl     %d1,%d0
-        lsll    #8,%d0
         addil   #SEL_OFF,%d2
         moveal  %d2,%a0
-        moveq   #0,%d1
-        moveb   %a0@,%d1               | scene A
+        lsll    #8,%d0                 | here, between the moveal and the load
+        mvzb    %a0@,%d1               | scene A
         orl     %d1,%d0
         lsll    #8,%d0
-        moveq   #0,%d1
-        moveb   %a0@(1),%d1            | scene B
+        mvzb    %a0@(1),%d1            | scene B
         orl     %d1,%d0                | d0 = key
         cmpl    %a4@,%d0
         beq.s   cached
@@ -118,37 +114,36 @@ fa:     tstb    SCENE_B_OFF
         addql   #2,%d5
 fb:     cmpil   #3,%d5
         beq     tnext                  | both off: stock skips the morph too
+        | Each register below is written at least one instruction before it forms an address (no address-use stall).
         lea     WEIGHTS,%a0
+        movel   %d7,%d0
         movel   %a0@(0,%d7:l:4),%d6
+        lsll    #6,%d0
         swap    %d6
         extl    %d6
         negl    %d6                    | d6 = wA = xf*258 (0..0x8000)
-        movel   %d7,%d0
-        lsll    #6,%d0
         lea     %a5@(0,%d0:l),%a1      | a1 = this track's voice record
         | FX2: id -> descriptor, locks at a4@(4) (A) / a4@(10) (B), bytes 48..53
         movel   %a3,%d0
         addil   #ID2_OFF,%d0
         addl    %d7,%d0
-        moveal  %d0,%a0
-        moveq   #0,%d0
-        moveb   %a0@,%d0
+        moveal  %d0,%a2                | the id's address; a2 takes the descriptor below
         lea     DESC2,%a0
+        mvzb    %a2@,%d0
+        moveq   #48,%d4
         moveal  %a0@(0,%d0:l:4),%a2    | a2 = descriptor (0 = none)
         lea     %a4@(4),%a0
-        moveq   #48,%d4
         bsr.w   morph6
         | FX1: locks at a4@(16) / a4@(22), bytes 36..41
         movel   %a3,%d0
         addil   #ID1_OFF,%d0
         addl    %d7,%d0
-        moveal  %d0,%a0
-        moveq   #0,%d0
-        moveb   %a0@,%d0
+        moveal  %d0,%a2
         lea     DESC1,%a0
+        mvzb    %a2@,%d0
+        moveq   #36,%d4
         moveal  %a0@(0,%d0:l:4),%a2
         lea     %a4@(16),%a0
-        moveq   #36,%d4
         bsr.w   morph6
 tnext:  lea     %a4@(32),%a4
         addql   #1,%d7
@@ -162,26 +157,21 @@ tnext:  lea     %a4@(32),%a4
 | or 0, d4 = record byte offset of slot 0, d5 = disabled sides, d6 = wA.
 | Clobbers d0-d3, keeps d4-d7 and a0-a5.
 morph6: movel   %d4,%sp@-
+        moveq   #0,%d3                 | d3 = k, set here: it keeps the index from the loop's first load
         movel   %a3,%sp@-
-        moveq   #0,%d3                 | d3 = k
-mloop:  moveq   #0,%d0
-        moveb   %a0@(0,%d3:l),%d0      | A
-        moveq   #0,%d1
-        moveb   %a0@(6,%d3:l),%d1      | B
+mloop:  mvzb    %a0@(0,%d3:l),%d0      | A
+        mvzb    %a0@(6,%d3:l),%d1      | B
         btst    #0,%d5
         beq.s   ma
-        moveq   #-1,%d0
-        andil   #0xff,%d0
+        movel   #0xff,%d0
 ma:     btst    #1,%d5
         beq.s   mb
-        moveq   #-1,%d1
-        andil   #0xff,%d1
+        movel   #0xff,%d1
 mb:     movel   %d0,%d2
         andl    %d1,%d2
         cmpil   #0xff,%d2
         beq.s   mnext                  | neither side locked
-        moveq   #0,%d2
-        moveb   %a1@(0,%d4:l),%d2      | the knob, as the copier left it
+        mvzb    %a1@(0,%d4:l),%d2      | the knob, as the copier left it
         cmpil   #0xff,%d0
         bne.s   mA
         movel   %d2,%d0
@@ -253,8 +243,7 @@ ucells: cmpil   #15,%d1
         addil   #CELL0,%d1
         moveal  %d1,%a0                | a0 = the scene's cell 0
         moveq   #NCELL,%d3
-ucloop: moveq   #0,%d1
-        moveb   %a0@,%d1               | track<<4 | fx1<<3 | slot2
+ucloop: mvzb    %a0@,%d1               | track<<4 | fx1<<3 | slot2
         btst    #7,%d1
         bne.s   ucnext                 | empty
         movel   %d1,%d2
