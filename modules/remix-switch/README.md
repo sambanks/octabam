@@ -201,13 +201,16 @@ inside a read are not reported to it.
 switcher masks interrupts (between frames, above), drains the panel's UART queue (OS UPGRADE's
 first two steps), and requests a soft reset (RCR SOFTRST, `0xfc0a0000`
 bit 7, MCF54455 RM). ✅ Measured on an MKII (builds 1-14, 29 Sep 2026):
-the unit resets at once and the bootstrap runs again. On an MKII the
-switcher first sends the panel `60 02`, the byte pair the OS's own loader
-handshake (`0x4001f4dc`) opens with. ❌ Retracted: build 1's "the panel
-controller is not reset and the bootstrap blocks in its first panel
-exchange"; the hang was the DSP (above). Whether `60 02` is needed at all
-is not measured; it is harmless (the OS sends it at boot). An MKI's panel
-is sent nothing (untested on an MKI).
+the unit resets at once and the bootstrap runs again. Before the reset
+the switcher sends the panel `60 02`, the byte pair the OS's own MKII
+loader handshake (`0x4001f4dc`) opens with, on both models. The panel is
+not reset with the ColdFire, and the bootstrap's first exchange sends `60
+00` and waits, with no timeout, for the key report a panel gives at
+power-on; `60 02` is meant to put the panel back in that start-up state.
+Whether it is needed is not confirmed: the boot-screen hang it was first
+added for was the DSP (above). It is sent on both models so that an MKI
+takes the same path as an MKII; the bootstrap is one for both and opens
+every power-on with `60 00`, so an MKI panel probably takes the same pair.
 
 ## Exported labels
 
