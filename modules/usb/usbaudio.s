@@ -194,7 +194,8 @@
 .set PF_MAIN,      2
 .set PF_CUE,       3
 .set PF_MASTER,    4
-.set NSLOT,        4            | power of two: slot arithmetic is a mask
+.set PF_PREHS,     5            | PRE at high speed: the words alone, no stereo sum
+.set NSLOT,       4            | power of two: slot arithmetic is a mask
 .set UNCACHED,     0x08000000   | + an SDRAM address = the same memory,
                                 | cache-inhibited (PLACEMENT.md)
 
@@ -1181,8 +1182,7 @@ producer_usb:
     movel   %d0,prod_end            | 16 frames on
     moveq   #SUM_SHIFT,%d1          | asr.l immediate is 1-8 only: shift via d1
     movel   %d7,%d4                 | d4 = frame bytes for the frame loop
-    mvzb    usb_trk,%d0
-    tstb    %d0
+    mvzb    usb_trk,%d0             | (mvz sets Z)
     beq.w   7f                      | OFF: no bounds/gain pointers
     cmpib   #TRK_POST,%d0
     beqs    6f
@@ -1212,23 +1212,31 @@ producer_usb:
     beqs    8f
     bset    #PF_CUE,%d6
 8:  tstb    usb_master
-    beqs    1f
+    beqs    8f
     bset    #PF_MASTER,%d6
+8:  btst    #PF_PRE,%d6             | PRE at high speed (a1 != 0): the usual
+    beqs    1f                      | stream, tested first in every frame
+    movel   %a1,%d0
+    beqs    1f
+    bset    #PF_PREHS,%d6
 1:
     | ---- the 16 track channels --------------------------------------------
     | PRE: track t's L,R (32-bit, post-FX, pre-fader) with the low byte
     | cleared -- 24 bits, left-justified in the subslot, no saturation needed
     | -- then BYTEREV (ISA_C) to little-endian, one longword store each, at
     | slot + t*8. The same words >> 8 accumulate into the stereo sum in
-    | 24-bit units (d5 = L, d3 = R; eight tracks fit in 27 bits).
+    | 24-bit units (d5 = L, d3 = R; eight tracks fit in 27 bits). At high
+    | speed the sum is not sent, so .Lf_pre_hs stores the words without it.
+    btst    #PF_PREHS,%d6
+    bne.w   .Lf_pre_hs
     btst    #PF_POST,%d6
     bne.w   .Lf_post
     btst    #PF_PRE,%d6
     beq.w   .Lf_notrk
     moveal  %a2,%a0                 | track 0, this frame
+    moveq   #RB_TRACKS-1,%d7
     moveq   #0,%d5                  | L sum
     moveq   #0,%d3                  | R sum
-    moveq   #RB_TRACKS-1,%d7
 2:  movel   %a0@,%d2                | track L
     movel   %d2,%d0
     asrl    %d1,%d0
@@ -1247,8 +1255,6 @@ producer_usb:
     subql   #1,%d7
     bpl     2b
     | ---- the stereo sum: saturate, left-justify, store little-endian --------
-    movel   %a1,%d0
-    bne     .Lf_sum_skip            | high speed: the sum ring is not sent
     movel   %d5,%d2
     SAT24   %d2
     | srcjump counts steps in the summed L sample larger than 800 << 8 (his
@@ -1272,7 +1278,21 @@ producer_usb:
     lsll    #8,%d0
     byterev %d0
     movel   %d0,%a4@+               | sum R
-.Lf_sum_skip:
+    bra     .Lf_fields
+.Lf_pre_hs:                         | PRE at high speed: the words, no sum,
+.if RB_TRACKS != 8                  | the eight tracks unrolled (track t at
+    .error "the unrolled PRE loop is written for eight tracks"
+.endif                              | a2 + t*128, as the loop above walks them)
+    .irp t,0,1,2,3,4,5,6,7
+    movel   %a2@(\t*128),%d2        | track t L
+    clrb    %d2
+    byterev %d2
+    movel   %d2,%a3@+
+    movel   %a2@(\t*128+4),%d2      | track t R
+    clrb    %d2
+    byterev %d2
+    movel   %d2,%a3@+
+    .endr
     bra     .Lf_fields
     | ---- POST: the stems, each track's block times its own MAIN gain --------
     | post_frame's per-sample gains, read in step with the words. The stereo
@@ -1332,17 +1352,20 @@ producer_usb:
     | landed in the next slot's track 8 field and the stream's MASTER
     | channels carried whatever the slot held (read from the source, not
     | measured on a unit).
-    | MAIN (checked): d2/d3 = the pair, byte-reversed
+    | MAIN (checked): d2/d3 = the pair, byte-reversed. In MAIN, CUE and MASTER
+    | every address register is loaded at least two instructions before its
+    | first use, so no load or store takes an address-use stall: prod_src is
+    | read above the box's test (a0 is free there).
+    moveal  prod_src,%a0
     btst    #PF_MAIN,%d6
     beqs    .Lf_nomain
-    moveal  prod_src,%a0
     movel   %a0@(MAIN_CUE_MAIN_OFF),%d2
+    movel   %a0@(MAIN_CUE_MAIN_OFF+4),%d3
+    moveal  prod_pm,%a0
     clrb    %d2
     byterev %d2
-    movel   %a0@(MAIN_CUE_MAIN_OFF+4),%d3
     clrb    %d3
     byterev %d3
-    moveal  prod_pm,%a0
     movel   %d2,%a0@                | MAIN L
     movel   %d3,%a0@(4)             | MAIN R
     addl    %d4,prod_pm
@@ -1355,16 +1378,16 @@ producer_usb:
     movel   %d3,%a4@+               | MAIN R, full speed
 .Lf_nomain:
     | CUE (checked)
+    moveal  prod_src,%a0
     btst    #PF_CUE,%d6
     beqs    .Lf_nocue
-    moveal  prod_src,%a0
     movel   %a0@(MAIN_CUE_CUE_OFF),%d2
+    movel   %a0@(MAIN_CUE_CUE_OFF+4),%d3
+    moveal  prod_pc,%a0
     clrb    %d2
     byterev %d2
-    movel   %a0@(MAIN_CUE_CUE_OFF+4),%d3
     clrb    %d3
     byterev %d3
-    moveal  prod_pc,%a0
     movel   %d2,%a0@                | CUE L
     movel   %d3,%a0@(4)             | CUE R
     addl    %d4,prod_pc
@@ -1382,12 +1405,12 @@ producer_usb:
     btst    #PF_MASTER,%d6
     beqs    .Lf_nomaster
     movel   %a2@((RB_TRACKS-1)*128),%d2
+    movel   %a2@((RB_TRACKS-1)*128+4),%d3
+    moveal  prod_px,%a0
     clrb    %d2
     byterev %d2
-    movel   %a2@((RB_TRACKS-1)*128+4),%d3
     clrb    %d3
     byterev %d3
-    moveal  prod_px,%a0
     movel   %d2,%a0@                | T8 L
     movel   %d3,%a0@(4)             | T8 R
     addl    %d4,prod_px
@@ -1403,8 +1426,7 @@ producer_usb:
     movel   %d2,%a4@+               | T8 L, full speed
     movel   %d3,%a4@+               | T8 R, full speed
 .Lf_nomaster:
-    movel   prod_skip,%d0
-    addal   %d0,%a3                 | the next frame (the tracks' words advanced a3 already)
+    addal   prod_skip,%a3           | the next frame (the tracks' words advanced a3 already)
     lea     %a2@(8),%a2             | next frame
     addql   #8,prod_src
     cmpal   prod_end,%a3

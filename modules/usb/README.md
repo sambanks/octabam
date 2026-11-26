@@ -479,7 +479,7 @@ is proposed to octemu, whose `audio_ctrl_shim` this one still is.
   While streaming the cost stands; a producer that copies once into the
   packet buffers instead of ring then packet is the lever there. The voice
   path is memory-bound, so the 320 read-back words count more than the
-  2,710 instructions.
+  1,420 instructions.
 
 ### Layouts
 
@@ -508,9 +508,9 @@ block at high speed, counted from the source (not cycles):
 
 | module | per frame | per block | read-back words read per block |
 |---|---|---|---|
-| OUT TRACKS MAIN CUE | 167 | ~2,710 | 320 (256 track + 64 MAIN/CUE) |
-| OUT TRACKS | 146 | ~2,370 | 256 |
-| OUT MASTER | 10 | ~180 | 32 |
+| OUT TRACKS MAIN CUE | 86 | ~1,420 | 320 (256 track + 64 MAIN/CUE) |
+| OUT TRACKS | 67 | ~1,110 | 256 |
+| OUT MASTER | 13 | ~230 | 32 |
 
 The port's `--profile` samples the PC every 64 instructions and gives no
 exact per-block count; cycles on the chip depend on memory timing the port
@@ -558,7 +558,7 @@ Counted from the source, instructions executed (not cycles):
 
 | | OUT TRACKS MAIN CUE | OUT MASTER |
 |---|---|---|
-| producer, per block (16 frames) | ~2,710 | ~180 |
+| producer, per block (16 frames) | ~1,420 | ~230 |
 | read-back words read per block | 320 | 32 |
 | packets built per ms (high speed) | 4 | 4 |
 | bytes copied into packets per ms | ~3,530 | ~353 |
@@ -769,14 +769,14 @@ building included) and with no host:
 
 | layout | streaming (high speed) | no host |
 |---|---|---|
-| OUT MAIN CUE | 827 | 17 |
-| OUT TRACKS | 2,639 | 17 |
-| OUT TRACKS MAIN CUE | 3,438 | 17 |
-| **OUT TRACKS POST** | **4,278** (+1,639 on OUT TRACKS) | **447** |
+| OUT MAIN CUE | 952 | 17 |
+| OUT TRACKS | 1,542 | 17 |
+| OUT TRACKS MAIN CUE | 1,946 | 17 |
+| **OUT TRACKS POST** | **4,519** (+2,977 on OUT TRACKS) | **447** |
 
-On `cfmeter-post` and `cfmeter-tracks` (CF METER and SYNTH MACHINE beside
-the USB module) the same count gives 4,503 and 2,766 (medians; minimums
-4,278 and 2,631).
+At high speed TRACKS PRE copies the eight tracks without the stereo sum
+(it is sent only at full speed). Layouts without PRE pay one test a frame
+for that path, and a frame's MAIN or CUE box that is off pays one load.
 
 **Time, measured on a unit while streaming: +2.8 µs a frame over OUT
 TRACKS** (0.8% of the frame; *On the unit*, above). This replaces the
