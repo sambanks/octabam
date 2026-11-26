@@ -853,6 +853,18 @@ taken; the unit reset, showed the boot screen and did not return to USB in 150 s
   - 16:45, self, prior state healthy (LOAD METER, DSP counting): no return.
   Between 16:41 and 16:45: one `ot_matrix.py run` of 4 layouts (START, STOP, 4 program changes, LOAD METER reads, host MIDI clock) on a project loaded by DISK MODE at 16:37; no DISK MODE entry. Not known: the DSP's state at the command, the sequencer's state (STOP had been sent), whether `osw_quiesce` ran, MB_PARK after the failure.
 
+- **27 Nov 2026, same image: the stops are two failures, and neither is a boot stall.** Self-boots of the running image's own `.RMX`
+  (`ot_v06.py switch`, idle unit, no other traffic; `out/hw/boot_ledger.tsv`), COMMAND 3 taken and no USB for 150 s:
+  - `OCTABAM T1` (main `256bcf4b`): 9 boots, 2 stops (the 5th of a run of 5, and 16:45 the day before);
+  - `OCTABAM W16` (the `60 02` to reset delay 16 times longer, `OSW_PANEL_WAIT`): 6 boots, 1 stop;
+  - `OCTABAM UD1` (USBCMD.RS cleared before a 10 times longer delay, `OSW_USB_DETACH`): 1 boot, 1 stop;
+  - `OCTABAM SY2` (osw_load's wait on the event `0x46c901b8` limited to 2 s, `OSW_SYNC_LIMIT`): 2 boots, 1 stop.
+  Screen at each stop, from the unit's owner: UD1: `SYNCING PROJECT` dialog on screen, keys fully dead. W16 and SY2: the unit in its normal
+  state and responsive, USB gone. A power-cycle brought USB back (twice needed once). So one stop is a hang in or before the sync
+  (`osw_load`: `0x4006d4a8`, then stock's pre-flash sequence and a wait with no time limit on the event `0x46c901b8`, count word `!= 0`),
+  and the other leaves the unit running without USB. Not known: which image runs in the second kind, whether re-plugging the cable
+  brings USB back, what the sync call is waiting for, MB_PARK at a stop (it reads 3 after every boot that returned, 27 of 27).
+
 |  |
 
 ## USB DISK MODE entered by COMMAND 1, the card never mounts on the Mac: a stale `diskN` after `diskutil unmount`
