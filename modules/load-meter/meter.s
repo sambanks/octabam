@@ -29,8 +29,8 @@ lm_in:
         move.l  %d0,lm_t0
         .weak   dl_pump                         | DLPUMP, when the remix carries it
         move.l  #dl_pump,%d0
-        beq.s   1f
-        move.l  %d0,%a0
+        move.l  %d0,%a0                         | (movea keeps the flags) here, two before the call:
+        beq.s   1f                              | no address-use stall
         jsr     %a0@
         .if     HK_FRAME_ENTRY
 1:      rts                                     | HOOKS goes on to the body
@@ -98,26 +98,27 @@ lm_scrub:
         addq.l  #1,lm_scrubs                    | every pass, for verify_load_meter
         lea     MAIN_LO,%a0
         lea     lm_raw,%a1
-        moveq   #22,%d1                         | bytes 0..22: the meter record, then OTOP's
+        moveq   #15,%d1                         | bytes 0..15: the meter record, summed
         moveq   #0,%d2                          | the sum of bytes 0..15
-1:      move.b  %a0@,%d0
-        move.b  %d0,%a1@+
+1:      mvz.b   %a0@,%d0
         clr.b   %a0@
         addq.l  #4,%a0
-        cmp.l   #6,%d1                          | d1 = 22 - the byte: bytes 16.. are not summed
-        ble.s   2f
-        and.l   #0xff,%d0
+        move.b  %d0,%a1@+
         add.l   %d0,%d2
-2:      subq.l  #1,%d1
+        subq.l  #1,%d1
         bpl.s   1b
+        moveq   #6,%d1                          | bytes 16..22: its sum byte, then OTOP's record
+2:      move.b  %a0@,%a1@+
+        clr.b   %a0@
+        addq.l  #4,%a0
+        subq.l  #1,%d1
+        bpl.s   2b
         lea     lm_raw,%a1
-        moveq   #0,%d0
-        move.b  %a1@,%d0
+        and.l   #0xff,%d2                       | here, between the lea and the load: no address-use stall
+        mvz.b   %a1@,%d0
         cmp.l   #0xa5,%d0
         bne.w   9f
-        moveq   #0,%d0
-        move.b  %a1@(16),%d0
-        and.l   #0xff,%d2
+        mvz.b   %a1@(16),%d0
         cmp.l   %d2,%d0
         bne.w   9f
         tst.l   lm_dsp_reset                    | the view opened: the peaks start again
@@ -140,8 +141,7 @@ lm_scrub:
         lea     lm_dsp+16,%a0
         bsr.w   lm_core
         bne.s   9f
-        moveq   #0,%d0
-        move.b  lm_raw+14,%d0
+        mvz.b   lm_raw+14,%d0
         move.l  %d0,lm_dsp+40                   | TUE frames, mod 256
         move.b  lm_raw+15,%d0
         move.l  %d0,lm_dsp+44                   | ROE frames, mod 256
@@ -165,20 +165,17 @@ lm_scrub:
 | (set by the view when it opens) clears them first.
 lm_otop:
         lea     lm_raw+17,%a1
-        moveq   #0,%d0
-        move.b  %a1@,%d0
+        moveq   #0,%d2                          | the sum, and the loop's index: set before the first load,
+        moveq   #4,%d1                          | they keep the lea and the index from their loads
+        mvz.b   %a1@,%d0
         cmp.l   #0xb4,%d0
         bne.s   2f
-        moveq   #0,%d2
-        moveq   #4,%d1
-1:      moveq   #0,%d0
-        move.b  %a1@(0,%d1:l),%d0
+1:      mvz.b   %a1@(0,%d1:l),%d0
         add.l   %d0,%d2
         subq.l  #1,%d1
         bpl.s   1b
         and.l   #0xff,%d2
-        moveq   #0,%d0
-        move.b  %a1@(5),%d0
+        mvz.b   %a1@(5),%d0
         cmp.l   %d2,%d0
         bne.s   2f
         tst.l   lm_ot_reset
@@ -192,15 +189,14 @@ lm_otop:
         clr.l   %a0@+
         subq.l  #1,%d1
         bpl.s   4b
-3:      moveq   #0,%d1
-        move.b  %a1@(1),%d1
+3:      mvz.b   %a1@(1),%d1
         cmp.l   #15,%d1
         bhi.s   2f
-        lea     %a1@(2),%a1
-        bsr.w   lm_u24
-        asl.l   #4,%d1
+        asl.l   #4,%d1                          | lm_ot[slot], before the call (lm_u24 keeps a0 and d1)
         lea     lm_ot,%a0
         add.l   %d1,%a0
+        lea     %a1@(2),%a1
+        bsr.w   lm_u24
         move.l  %d0,%a0@                        | last
         add.l   %d0,%a0@(4)                     | sum
         addq.l  #1,%a0@(8)                      | count
@@ -240,8 +236,7 @@ lm_core:
 
 | three bytes at a1 (high first) -> d0; a1 past them
 lm_u24:
-        moveq   #0,%d0
-        move.b  %a1@+,%d0
+        mvz.b   %a1@+,%d0
         lsl.l   #8,%d0
         move.b  %a1@+,%d0
         lsl.l   #8,%d0
