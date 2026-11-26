@@ -228,7 +228,9 @@ MODULE = Module(
     # "X" was LOFI2's letter on the tree it was written on; VOCODER holds it
     # now, and "L" is stock LO-FI's (tools/remix/stock.py).
     harness=Harness(layout_char="F", is_server=False),
-    gates=(Gate("tools/verify/verify_lofi2.py", remix_arg=False),),
+    gates=(Gate("tools/verify/verify_lofi2.py", remix_arg=False),
+           # the FUNC-stop handlers under Unicorn: assembled alone, no image
+           Gate("tools/verify/verify_lofi2_knobs.py", remix_arg=False, venv=True)),
     # ColdFire: FUNC + turn walks per-knob stops (P+0x12a handlers).
     linked=(Linked(_KN, "modules/lofi2/func_stops.s"),),
     # Dearest: a SHIFT mode (the two Hilbert pairs, the dear loop), every
