@@ -9,6 +9,8 @@
 # for pushes to main and for every pull request, fork PRs included: a fork PR's code
 # runs with the firmware on the runner's disk, and the repository's approval policy
 # for fork PR workflows (first_time_contributors) decides who is held first.
+# PR jobs use the event's base commit so planning and execution compare the same trees
+# even if main advances while the matrix is queued.
 # Each job is one make target, so a red job reproduces with the same command.
 # `classify` gates each job on whether the diff touches its inputs
 # (tools/verify/ci_paths.py holds the map); it errs toward running: a
@@ -54,7 +56,7 @@ jobs:
         id: map
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            base="origin/${{ github.base_ref }}"
+            base="${{ github.event.pull_request.base.sha }}"
           else
             base="${{ github.event.before }}"
           fi
@@ -130,7 +132,7 @@ jobs:
         id: plan
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            base="origin/${{ github.base_ref }}"
+            base="${{ github.event.pull_request.base.sha }}"
           else
             base="${{ github.event.before }}"
           fi
@@ -254,7 +256,7 @@ jobs:
         if: matrix.name == 'refhash'
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            base="origin/${{ github.base_ref }}"
+            base="${{ github.event.pull_request.base.sha }}"
           else
             base="${{ github.event.before }}"
           fi
@@ -302,7 +304,7 @@ jobs:
           UNIT: ${{ matrix.name }}
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            base="origin/${{ github.base_ref }}"
+            base="${{ github.event.pull_request.base.sha }}"
           else
             base="${{ github.event.before }}"
           fi
