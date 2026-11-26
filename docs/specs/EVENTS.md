@@ -49,7 +49,7 @@ CLIENTS = {
                   ('MIDI HARMONY', 'mh_seq', ('start', 'resume'))),
     'midi': (('MIDI FOLLOW', 'bf_seq', ('note_accepted',)),
              ('MIDI HARMONY', 'mh_seq', ('note_accepted',))),
-    'edit': (('MIDI HARMONY', 'mh_ed', ('held', 'copy_pre', 'copy_post')),
+    'edit': (('MIDI HARMONY', 'mh_ed', ('held', 'held_press', 'copy_pre', 'copy_post')),
              ('PLOCKS P2', 'plk_ed', ('held', 'copy_pre', 'held_press')),
              (LOCKS_KEY, 'pg', ('held', 'scene_held', 'copy_pre', 'steps'))),
 }

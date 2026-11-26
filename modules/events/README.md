@@ -3,8 +3,9 @@
 System owner of shared native event boundaries. Select **EVENTS** once; clients
 declare `requires=('EVENTS',)` and register only the events they consume.
 EUCLID uses transport notifications. MIDI Follow uses transport and accepted-note
-notifications. Harmony also uses held-edit ownership and pre/post-copy notifications. PLOCKS P2 uses held-edit ownership and
-copy notifications. PAGES' locks use held-edit and held-scene ownership, and
+notifications. Harmony also handles held-encoder turns and presses, and observes copies
+before and after native memcpy. PLOCKS P2 handles held turns and presses in
+its editor and observes copies before memcpy. PAGES' locks use held-edit and held-scene ownership, and
 copy and step notifications. The module adds no controls, persistent data or FX slots.
 
 Spec: [docs/specs/EVENTS.md](../../docs/specs/EVENTS.md) — the stock boundaries, the registration form and each family's contract and timing.

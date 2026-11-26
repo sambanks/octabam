@@ -12,7 +12,35 @@ from verify_midi_scale_provider import symbols, field, MASKS, U32
 from verify_scales import CATALOGUE, encode, mask
 
 
+def held_presses():
+    m = Machine(symbols)
+    u = m.uc
+    stock_entry = 0x4005040c
+    assert bytes(u.mem_read(stock_entry, 6)) == b'\x4e\xf9' + m.sym['ed_held_press'].to_bytes(4, 'big')
+
+    def dispatch(target):
+        for pressed in (0, 1):
+            args = (0x3b).to_bytes(4, 'big') + pressed.to_bytes(4, 'big')  # knob D
+            u.mem_write(m.stack + 4, args)
+            m.call('ed_held_press', stop=target)
+            assert bytes(u.mem_read(m.stack + 4, 8)) == args
+
+    u.mem_write(0x80000012, (1).to_bytes(4, 'big'))  # MIDI track, NOTE page
+    m.call('mh_set_native', 0, 2)
+    dispatch(m.sym['mhc_step_push'])
+    m.call('mh_set_native', 0, 0)
+    dispatch(stock_entry + 8)
+
+    u.mem_write(0x80000012, bytes(4))  # audio track, held trig in FX1 setup
+    u.mem_write(0x460d174a, (1).to_bytes(2, 'big'))
+    u.mem_write(0x460d1684, (3).to_bytes(4, 'big'))
+    u.mem_write(0x460d175c, m.scratch.to_bytes(4, 'big'))
+    dispatch(m.sym.get('plk_ed_press_handle', stock_entry + 8))
+    print('[ok] held knob press and release select the installed Harmony, PLOCKS or stock handler')
+
+
 def main():
+    held_presses()
     m = Machine(symbols)
     m.instruction_budget = 20_000
     u, s = m.uc, m.sym
