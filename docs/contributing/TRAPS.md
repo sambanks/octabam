@@ -1831,6 +1831,31 @@ values copied, changed and pasted read back from the live lanes. To find a
 layer order like this: dump `0x460d165c` (the list head), walk the `next`
 words, and read the handler cache with the key held.
 
+<a id="trap-shared-framer"></a>
+
+### Two MIDI inputs feed one framer: a USB message replaced DIN's running status
+
+**SYMPTOM.** With a DAW sending program changes over USB and the Octatrack's
+own MIDI out looped into its DIN input, patterns nobody chose were selected
+(#1248). Under the port, DIN `90 3c 64 3d 64`, USB `C0 05`, DIN `3e 64`
+parsed as `90 3c 64 90 3d 64 c0 05 c0 3e c0 64`.
+
+**CAUSE.** USB-MIDI events and DIN bytes reach one FIFO (`0x40092bbc`) and
+one framer (`0x40092bf4`), whose running status (`0x46100b70`), "second data
+byte pending" flag (`0x46100b74`) and half-received message at the write
+index are per framer, not per source. A USB event always carries its status,
+so it sets the running status DIN's later data bytes are read with.
+
+**FIX.** For a USB channel or system common event, `usbmidi_rx_decode` runs
+the framer until the FIFO is empty, saves its state at SR `0x2700`, enqueues
+and frames the event, and restores DIN's state (`usbmidi_rx_rs_save` /
+`_restore`). Anything else that injects bytes into this FIFO needs the same;
+MIDI LOOPBACK posts whole messages to the MIDI thread's queue instead.
+
+**GATE.** `verify_usb_midi_din_mix`: running-status pairs, a USB message
+between a DIN message's two data bytes, a three-byte USB message, and a DIN
+SysEx followed by a stray data byte.
+
 <a id="trap-late-frame"></a>
 **A FRAME INTERRUPT THAT ENTERS ABOUT 150 µs LATE STOPS THE DSP'S FRAME
 EXCHANGE.** At START and at a program change one frame interrupt runs 475 to

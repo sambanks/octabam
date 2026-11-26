@@ -240,7 +240,8 @@ MIDI_GATES = (Gate("tools/verify/verify_usbmidi_rx.py", stage="image"),
               Gate("tools/verify/verify_usb_midi_replug.py", stage="image"),
               Gate("tools/verify/verify_usbmidi_tx_ring.py", stage="image"),
               Gate("tools/verify/verify_usbmidi_isr.py", venv=True, stage="image"),
-              Gate("tools/verify/verify_usb_midi_disk.py", stage="image"))
+              Gate("tools/verify/verify_usb_midi_disk.py", stage="image"),
+              Gate("tools/verify/verify_usb_midi_din_mix.py", stage="image"))
 # MAIN/CUE aligned with the tracks (skips without a source project)
 GATE_ALIGN = Gate("tools/verify/verify_usb_align.py", remix_arg=False, venv=True, stage="image")
 # the stems against core 0's own MAIN, sample by sample, under the port (skips without a source project)
