@@ -451,6 +451,7 @@ ecommit:
         movel   %d0,EDIT_A
         moveq   #1,%d0
         movel   %d0,EDIT_B
+        bsr.w   setup_refresh          | the SETUP window draws only on its own
 edone:  moveq   #0,%d0
         movem.l %sp@,%d2-%d7/%a2-%a6
         lea     %sp@(44),%sp
@@ -716,7 +717,11 @@ dial1_hook:
 
 | dial: a0 = the Part byte, d6 = kind, fp / d4 as above -> d6 = the value
 | to draw: a held scene's lock, else (with PLOCKS P2 in the remix) a held
-| step's page-2 lock, else the Part byte. Keeps everything but d6 and a0.
+| step's page-2 lock, else the Part byte. A held scene's lock also sets bit
+| 0 of a1, the flags stock passes to the dial renderer (0x400479b4): the
+| value area inverted and the number kept, as a page-1 scene lock draws.
+| a1 is set before both sites and read only by that call (0x4003787c,
+| 0x40037c18). Keeps everything but d6, a0 and a1 bit 0.
 dial:   moveq   #0,%d0
         moveb   %a0@,%d0
         tstl    SCENE_HELD
@@ -763,6 +768,8 @@ db1:    bsr.w   cfind
         beq.s   dnone
         moveq   #0,%d3
         moveb   %a5@(1),%d3
+        moveq   #1,%d0
+        orl     %d0,%sp@(20)           | the saved a1: highlighted
 dnone:  movel   %d3,%d0
         movem.l %sp@,%d1-%d5/%a1/%a4/%a5
         lea     %sp@(32),%sp
@@ -771,6 +778,84 @@ dnoscene:
         jsr     plk_dial               | PLOCKS P2: a held step's page-2 lock
         .endif
 dknob:  movel   %d0,%d6
+        rts
+
+| --------------------------------------------------------- SETUP redraw ----
+| The FX1 / FX2 SETUP window is a popup that stock's page redraw
+| (0x4004d948) and the slots' redraw flags do not reach: with a scene held
+| its dials kept the Part's look until the window next drew itself (on the
+| key's release). The window is drawn again where stock redraws the page:
+| a lock turned or removed (the editor's tail), a SCENE key's hold event
+| (0x40054c80 A, 0x40054c5c B: the lock view on) and its release
+| (0x40054ca4: off). PLOCKS P2 refreshes the same window for held trigs
+| (plk_refresh_setup); the checks are the same.
+        .set    MIDITRK,    0x80000012      | long: nonzero on a MIDI track
+        .globl  scene_draw, scene_release_draw
+
+| scene_draw: the SCENE hold's `jsr 0x4004d948(-1); addql #4,%sp`, then the
+| window. sp@(4) = stock's -1.
+scene_draw:
+        movel   %sp@(4),%sp@-
+        jsr     0x4004d948
+        addql   #4,%sp
+        bsr.w   setup_refresh
+        movel   %sp@,%sp@(4)           | the displaced addql #4,%sp
+        addql   #4,%sp
+        rts
+
+| scene_release_draw: the release's `jsr 0x4004d948(-1); jsr 0x400418e0`
+| (both with the -1 at sp@(4); stock pops it after), then the window.
+scene_release_draw:
+        movel   %sp@(4),%sp@-
+        jsr     0x4004d948
+        addql   #4,%sp
+        movel   %sp@(4),%sp@-
+        jsr     0x400418e0
+        addql   #4,%sp
+        bra.w   setup_refresh
+
+| setup_refresh: the open FX1 or FX2 SETUP window's own draw (the
+| descriptor's callback at +44), on an audio track, only when the shared
+| popup object is that window (open flag, SETUP geometry). Keeps d0, d1,
+| a0, a1; the callback keeps the rest (C ABI).
+setup_refresh:
+        lea     %sp@(-16),%sp
+        movem.l %d0-%d1/%a0-%a1,%sp@
+        tstl    MIDITRK
+        bne.s   srdone
+        movel   PAGEKIND,%d0
+        subql   #3,%d0
+        cmpil   #1,%d0
+        bhi.s   srdone
+        lea     0x400bc25a,%a1        | FX1 SETUP descriptor
+        tstl    %d0
+        beq.s   srwin
+        lea     0x400bc484,%a1        | FX2 SETUP descriptor
+srwin:  movel   %a1@(8),%d0           | its window object
+        beq.s   srdone
+        cmpl    WINDOW,%d0
+        bne.s   srdone
+        moveal  %d0,%a0
+        movel   %a0@(32),%d0
+        btst    #5,%d0
+        beq.s   srdone                | closed
+        movel   %a0@(8),%d0
+        cmpil   #7,%d0
+        bne.s   srdone
+        tstl    %a0@(12)
+        bne.s   srdone
+        movel   %a0@(24),%d0
+        cmpil   #0xf4,%d0
+        bne.s   srdone
+        movel   %a0@(40),%d0
+        cmpil   #0x40,%d0
+        bne.s   srdone                | the shared object is another popup's
+        moveal  %a1@(44),%a0          | the window's draw
+        movel   %a0,%d0
+        beq.s   srdone
+        jsr     %a0@
+srdone: movem.l %sp@,%d0-%d1/%a0-%a1
+        lea     %sp@(16),%sp
         rts
 
 | The cache: 8 rows of 32 -- key (bank, part, scene A, scene B), then the

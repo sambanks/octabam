@@ -16,8 +16,10 @@ bytes.
 
 Sites: the frame builder's join after the morph (0x4000cf40), the FX2
 page-2 editor (0x4003a9dc) and FX1's (0x4003abe4), stock's scene-lock knob
-handlers for scene A (0x40053498) and scene B (0x40052e98), all at
-instruction boundaries with the displaced instructions replayed.
+handlers for scene A (0x40053498) and scene B (0x40052e98), the page-2
+dials (0x40037840, 0x40037bdc) and the SCENE keys' page redraws on hold
+(0x40054c94, 0x40054c70) and release (0x40054cc6), all at instruction
+boundaries with the displaced instructions replayed.
 """
 
 from remix.schema import Gate, Category, Evidence, Level, Claims, Detour, Kind, Linked, Module
@@ -70,6 +72,13 @@ MODULE = Module(
                "FX2 page-2 dial: with a scene held, draw that scene's lock", kind="jmp", pad_to=8),
         Detour(0x40037BDC, H("d1fc0008f07e1c10"), "p2scenes", "dial1_hook",
                "FX1 page-2 dial: the same", kind="jmp", pad_to=8),
+        Detour(0x40054C94, H("4eba8cb2588f"), "p2scenes", "scene_draw",
+               "SCENE A's hold: stock's page redraw, then an open FX SETUP window", kind="jsr"),
+        Detour(0x40054C70, H("4eba8cd6588f"), "p2scenes", "scene_draw",
+               "SCENE B's hold: the same", kind="jsr"),
+        Detour(0x40054CC6, H("4eba8c804eb9400418e0"), "p2scenes", "scene_release_draw",
+               "a SCENE key's release: stock's page redraw and 0x400418e0, then an open FX SETUP window",
+               kind="jsr", pad_to=10),
     ),
     # bytes 30, 31 of every (scene, track) block: Part +0x8f3e2 + 0x100*scene
     # + 0x20*track + 30

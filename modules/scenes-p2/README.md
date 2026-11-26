@@ -1,11 +1,10 @@
 # `scenes-p2` — SCENES P2
 
 Scene locks and the crossfader for page 2 of FX1 and FX2. `Kind.CF_PATCH`:
-one DRAM unit, nine detours, nothing on the DSP.
+one DRAM unit, twelve detours, nothing on the DSP.
 
 ## Open
 
-- The dial hook (a draw; the port's LCD was not driven to the page).
 - Whether SAVE KIT saves after page-2 lock edits alone.
 - The undo row's writer is inferred to be `0x40025b40(0x460bf218, ...)`
   from the paste row's shape; the write hook was exercised with that call.
@@ -105,9 +104,22 @@ module keeps its locks instead, as cells the frame pass reads itself.
   cache after they return.
 - **The dial.** The page-2 knob draw reads the Part byte at `0x40037840`
   (FX2) and `0x40037bdc` (FX1); with a scene held it shows that scene's
-  lock instead, as the page-1 dials do. With PLOCKS P2 in the remix and
-  no scene held, trigs held show the first held step's page-2 lock
-  (`plk_dial`).
+  lock instead, highlighted as a page-1 scene lock is: bit 0 of the flags
+  stock passes to the dial renderer `0x400479b4` (set in `a1` before both
+  sites, read only by that call) inverts the value area and keeps the
+  number. With PLOCKS P2 in the remix and no scene held, trigs held show
+  the first held step's page-2 lock (`plk_dial`).
+- **The SETUP window's redraw.** FX1 / FX2 SETUP is a popup that stock's
+  page redraw `0x4004d948` and the slots' redraw flags do not reach. Until
+  25 Nov 2026 its dials kept the Part's look while a scene was held and
+  caught up only when the key was let go. The window's own draw (the
+  descriptor's callback, `0x400bc25a` / `0x400bc484` +44, under the checks
+  PLOCKS P2's `plk_refresh_setup` makes) now follows a lock turned or
+  removed, the SCENE keys' hold event (`0x40054c94` A, `0x40054c70` B: the
+  lock view on) and their release (`0x40054cc6`: off). Under the port
+  (`verify_scenes_p2.py`'s display check) a turn draws within 10 ms, the
+  release within 10 ms, and a new hold at the hold event, about 260 ms as
+  on page 1.
 
 ## Octakit (until 6 Oct 2026)
 
