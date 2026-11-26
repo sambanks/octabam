@@ -212,6 +212,23 @@ added for was the DSP (above). It is sent on both models so that an MKI
 takes the same path as an MKII; the bootstrap is one for both and opens
 every power-on with `60 00`, so an MKI panel probably takes the same pair.
 
+**The USB controller.** Before the delay that follows, the switcher clears
+the controller's run bit and sets RST (`USBCMD`, `0xfc0b0140`), bounded at
+65,536 reads for RST to clear. ✅ Measured on one MKII (27 Nov 2026,
+`octabam` at main `63d13072` with only this change): 40 self-boots in a row
+(`ot_v06.py switch`), each returned with MB_PARK 3 and the DSP counting.
+Without it, on the same unit, 22 `COMMAND 3` switches between builds of the
+same source (some with the panel delay 16 times longer or the streaming-event
+wait bounded at 2 s) ended in 6 stops: 3 left the new image running, project
+loaded (REMOTE's card log shows its boot records), with no USB device on the
+host (a re-plug did not bring it back, a power-cycle did); 1 stopped on the
+`SYNCING PROJECT` dialog with the keys dead, before the reset; 2 were not
+classified. The cause of the first kind is inferred: the soft reset may
+leave the controller configured, and the new image's start-up then finds the
+old one's endpoints and bus address. At 3 of 22, 40 clean switches in a row
+would happen about 0.3 % of the time. The `SYNCING PROJECT` stop is not
+addressed by this step (`docs/contributing/FAILURE_MODES.md`).
+
 ## Exported labels
 
 `osw_names` (the list's 24-byte names, 32 of them), `osw_count` and `osw_idx` are global labels: REMOTE

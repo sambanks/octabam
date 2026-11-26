@@ -839,6 +839,23 @@ osw_reset:
         moveq   #0x02,%d1
         bsr.w   putpanel
         bsr.w   txempty
+        | The USB controller back to its reset state, so the new image's start-up
+        | finds it as a power-on does: run bit off, then RST, which clears itself.
+        | Without it about one switch in six ended with the new image running
+        | and no USB device on the host (FAILURE_MODES.md, 27 Nov 2026).
+        move.l  (0xfc0b0140).l,%d0      | USBCMD
+        bclr    #0,%d0
+        move.l  %d0,(0xfc0b0140).l
+        move.l  (0xfc0b0140).l,%d0
+        bset    #1,%d0
+        move.l  %d0,(0xfc0b0140).l
+        move.l  #0x10000,%d1            | bound: RST clears in a few cycles
+5:      move.l  (0xfc0b0140).l,%d0
+        btst    #1,%d0
+        beq.s   6f
+        subq.l  #1,%d1
+        bne.s   5b
+6:
         move.l  #0x00400000,%d0         | ~20 ms for the panel to act on it (cycle count INFERRED)
 7:      subq.l  #1,%d0
         bne.s   7b
