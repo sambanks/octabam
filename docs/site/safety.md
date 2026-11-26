@@ -1,76 +1,80 @@
 # Safety and Recovery
 
-Read this page before flashing. Keep the recovery files and equipment
-available whenever you install a modified OS.
+Read this page before flashing, and keep your recovery files and MIDI interface
+on hand whenever you install modified firmware.
 
 ## Recovery requirements
 
-Octabam is community maintained and is not supported by Elektron. Flashing
-modified firmware carries a risk of data loss or a unit that cannot boot. A
-failed flash can leave the installed OS unable to boot until stock OS is
-reinstalled.
+Octabam is community-maintained and is not supported by Elektron. Flashing
+modified firmware carries a risk of data loss or leaving the unit unable to boot
+until you reinstall stock OS.
 
-Recovery needs a working Startup Menu, a DIN MIDI interface, and a copy of
-the stock OS. The Startup Menu is separate from the operating system, but
-this procedure cannot recover a unit whose Startup Menu or MIDI input is
-unavailable.
+Recovering from a bad flash requires a working Startup Menu, a 5-pin DIN MIDI
+interface, and a copy of stock OS 1.40C. Although the Startup Menu is stored
+separately from the main OS, this procedure cannot recover a unit if its Startup
+Menu or MIDI input is not working.
 
 ## Reinstall stock OS over MIDI
 
-1. Power off. Hold FUNC and power on → STARTUP MENU.
-2. TRIG 3 → MIDI UPGRADE → "READY TO RECEIVE MIDI UPGRADE".
-3. Send `downloads/extracted/OCTATRACK_OS1.40C.syx` (created by
-   `make os`) over DIN MIDI with a SysEx app, or run:
+1. Power off the unit, then hold **FUNC** while powering on to open the
+   **STARTUP MENU**.
+2. Press **TRIG 3** (MIDI UPGRADE) and wait for "READY TO RECEIVE MIDI UPGRADE".
+3. Send `downloads/extracted/OCTATRACK_OS1.40C.syx` (from `make os`, or
+   Elektron's official download) over DIN MIDI using a SysEx app, or run:
 
    ```bash
    make midi-flash PORT=<port> SYX=downloads/extracted/OCTATRACK_OS1.40C.syx
    ```
-4. Wait through PREPARING FLASH → UPDATING FLASH. Do not power off.
+4. Wait through PREPARING FLASH and UPDATING FLASH without powering off.
 
-If the unit boots far enough to enter USB DISK MODE, you can also install
-stock OS from the CF card. The Octatrack USB port cannot send an OS upgrade.
+If the Octatrack still boots far enough to enter USB DISK MODE, you can also
+reinstall stock OS from the CF card. The Octatrack's USB port cannot receive OS
+upgrades.
 
-TRIG 2 → EMPTY RESET clears battery-backed RAM and settings, not the card.
+`TRIG 2 → EMPTY RESET` clears battery-backed RAM and settings without touching
+the CF card.
 
 ## Resolve a saved-data file warning
 
-If a project file for FX page 2 parameter locks, Kits or MIDI scenes is
-unreadable or incompatible, a message names the affected data and file.
-This can happen with damaged or incomplete files as well as older formats.
-An ordinary stock project without these extra files does not need them.
+If a project's extra data file for FX page 2 parameter locks, Kits, or MIDI
+scenes is unreadable or incompatible, the Octatrack displays a warning naming
+the affected data and file. This can happen with corrupted, incomplete, or
+older-format files. Standard stock projects without these extra files do not
+trigger this warning.
 
-Press **NO** to dismiss the message and keep the original file protected,
-or **YES** to see the options. Turn **LEVEL** to choose, then press **YES**:
+Press **NO** to dismiss the warning and leave the existing file untouched, or
+press **YES** to open the recovery menu. Turn **LEVEL** to pick an option and
+press **YES**:
 
-| Choice | What happens |
+| Choice | Result |
 |---|---|
-| KEEP FILE / SKIP SAVED DATA | Leaves the original file untouched. Its saved data is unavailable for this session. |
-| START FRESH / REPLACE FILE | Continues without the old saved data. The next save replaces the file. For Kits, the project's stock Parts become the starting Kits. |
-| BACKUP FILE THEN START FRESH | Starts fresh, but the next save first copies the original to a `.bak` file. |
+| KEEP FILE / SKIP SAVED DATA | Leaves the file untouched on disk. That feature's saved data will not be loaded for this session. |
+| START FRESH / REPLACE FILE | Continues without the old data and overwrites the file on the next save. For Kits, the project's stock Parts become the starting Kits. |
+| BACKUP FILE THEN START FRESH | Starts fresh, copying the original file to a `.bak` backup before overwriting it on the next save. |
 
-These choices do not upgrade or recover the old contents. Keep the file
-if you want to investigate or recover its data later. Pressing **NO** from
-the choices also leaves it protected until the next project load.
+None of these options repair or migrate old data. Choose KEEP FILE if you want
+to inspect or recover the file later on a computer. Pressing **NO** from the
+choice menu also leaves the file untouched until the next project load.
 
 ## Common questions
 
 **Is this official Elektron firmware?**
-No. Nothing here is endorsed by, supported by, or affiliated with
-Elektron.
+No. Octabam is not made, endorsed, supported by, or affiliated with Elektron.
 
 **Does flashing touch my card or projects?**
-No. An OS upgrade does not touch the CF card. Two exceptions: Octabam's Kits
-write a `kits.work` file into each project they load (a stock OS ignores the
-file), and BRAIN writes its own files to the card.
+No. Installing an OS update does not modify your CF card. Note that once
+installed, Kits write a `kits.work` file into each project they load (which
+stock OS ignores), and BRAIN stores its settings and templates on the card.
 
 **MKI or MKII?**
-Both run the same OS 1.40C file, and both can flash an octabam image.
+Both models use the same OS 1.40C file and can run Octabam images.
 
-**Why can I not download a built image?**
-A built `.bin` or `.syx` contains Elektron's OS. Distributing it would
-distribute their software, so you build it yourself from your own copy.
+**Why can I not download a prebuilt image?**
+A built `.bin` or `.syx` file contains Elektron's operating system. Sharing it
+would redistribute Elektron's software, so you build the image locally from your
+own copy of OS 1.40C.
 
 **Where are hardware failures recorded?**
-The [failure register](https://github.com/sambanks/octabam/blob/main/docs/contributing/FAILURE_MODES.md)
-records observed failures, causes and fixes. It cannot guarantee that a
-particular unit or flash attempt will recover.
+Known hardware faults, causes, and fixes are tracked in the
+[failure register](https://github.com/sambanks/octabam/blob/main/docs/contributing/FAILURE_MODES.md).
+It does not guarantee that every unit or flash failure can be recovered.

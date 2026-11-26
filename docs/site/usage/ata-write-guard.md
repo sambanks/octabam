@@ -1,3 +1,1 @@
-Protects the card against a hang. On stock, the first write after a task
-switch could stall while polling the card; this keeps that step intact.
-There is nothing to operate and nothing on the panel.
+This module prevents CompactFlash card writes from hanging. On stock OS, the first write after a task switch can stall while polling the card; this fix prevents that stall. It runs automatically with no settings or menu entries.

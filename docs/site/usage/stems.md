@@ -1,30 +1,35 @@
-Records stems to the card while the sequencer plays: every track after its
-fader, the main mix (MAIN), the cue mix (CUE) and the four inputs, in 16
-or 24 bits. The take is written while it records, up to 60 minutes. Each
-take gets its own folder in `AUDIO/!STEMS/` (first in the file browser),
-named after the take, `YYMMDD-HHMM`, and each source lands in it as its
-own WAV file at 44,100 Hz. The take's name also starts each file's name:
-`YYMMDD-HHMM-T1.wav` to `-T8.wav`, `-MAIN.wav`, `-CUE.wav`, and the inputs
-as `-AB.wav` and `-CD.wav` (stereo) or `-A.wav` to `-D.wav` (mono). A
-second take in the same minute is `YYMMDD-HHMM-2`, a third
-`YYMMDD-HHMM-3`, and so on, so no take overwrites another. Takes already
-on a card in an older layout stay where they are.
+STEMS records multitrack audio directly to the CF card while the sequencer
+plays, capturing every post-fader track, the main mix (MAIN), the cue mix
+(CUE), and the four external inputs in 16-bit or 24-bit WAV format at
+44,100 Hz. Audio streams to the card as it records, for up to 60 minutes per
+take.
 
-A track's file is its share of MAIN: the track's audio times the gain the
-mix gives it, so the level, MAIN LEVEL, the scenes and the crossfader are
-in it.
+Each take is saved in its own folder under `AUDIO/!STEMS/` (sorted first in
+the file browser), named `YYMMDD-HHMM`, with each selected source written as a
+separate WAV file prefixed by the take name: `YYMMDD-HHMM-T1.wav` through
+`-T8.wav`, `-MAIN.wav`, `-CUE.wav`, and inputs as `-AB.wav` / `-CD.wav`
+(stereo) or `-A.wav` through `-D.wav` (mono). Additional takes started within
+the same minute are numbered `YYMMDD-HHMM-2`, `YYMMDD-HHMM-3`, and so on, so
+existing takes are never overwritten. Takes already stored on the card in an
+older folder layout remain untouched.
+
+Each track file captures that track's contribution to MAIN, scaled by its mix
+gain, so track level, MAIN LEVEL, scenes, and crossfader movements are baked
+into the recording.
 
 ## Access
 
-Hold **UP** and press **REC** (UP first). The same chord closes STEMS. REC
-alone stays stock grid recording, and MAIN MENU is unchanged. Not in an
-official remix; build the test remix `stems`.
+Hold **UP** and press **REC** (press UP first) to open STEMS, and press the
+same chord again to close it. Pressing REC alone still toggles stock grid
+recording, and MAIN MENU is unchanged. This module is not included in the
+standard remixes; build the `stems` remix to use it.
 
 ## Operation
 
-STEMS looks like SYSTEM > PERSONAL SETTINGS: five rows at a time, each a
-name and a value. UP and DOWN move, YES changes the value under the
-cursor, NO closes STEMS. The rows, top to bottom:
+STEMS uses the same five-row list layout as SYSTEM > PERSONAL SETTINGS, where
+each row shows a label and a value. Use UP and DOWN to navigate, YES to toggle
+or activate the selected item, and NO to close the menu. The rows, from top to
+bottom, are:
 
 | Row | Shows | YES |
 |---|---|---|
@@ -35,32 +40,35 @@ cursor, NO closes STEMS. The rows, top to bottom:
 | 13-14 | the input pairs AB and CD, one row each | toggles the checkbox LEFT and RIGHT picked |
 | 15 | `24 BIT` with a checkbox | 16-bit or 24-bit files |
 
-A pair row reads `AB` and `STEREO` in stereo (one stereo file), or `A`,
-`B` and `STEREO` with STEREO off (a mono file for each input that's on, so
-one input can record alone). LEFT and RIGHT pick a checkbox, as on MIDI
-SYNC. The CD row works the same way with C and D.
+An input pair row displays `AB` and `STEREO` when stereo is enabled (recording
+one stereo file), or `A`, `B`, and `STEREO` when stereo is disabled (recording
+a separate mono file for each enabled input, so you can record a single input
+by itself). Use LEFT and RIGHT to move between checkboxes, just as on the MIDI
+SYNC page. The CD row behaves the same way for inputs C and D.
 
-1. Choose the sources and the format. At boot T1 alone is on, at 24
-   bits, both pairs stereo. Nothing is
-   saved, and rows 3 to 15 are locked while a take records or saves.
-2. Press **YES** on STEM REC. With the sequencer stopped it arms and starts on the
-   first frame the sequencer plays (press again to cancel); with it running
-   it starts at once.
-3. The take stops when the sequencer stops, when you press STOP, after 60
-   minutes, or when the ring fills. You can close the menu while it
-   records.
-4. **Pull the card or power off only when the status reads `DONE`.** The
-   folder appears when the take starts, so it is not a signal.
+1. Select your sources and bit depth. At boot, only T1 is enabled, bit depth
+   is set to 24-bit, and both input pairs are set to stereo. These selections
+   are not persisted across reboots, and rows 3 through 15 are locked while a
+   take is recording or saving.
+2. Press **YES** on `STEM REC`. If the sequencer is stopped, recording arms
+   and starts on the first frame of playback (press YES again to cancel). If
+   the sequencer is already running, recording starts immediately.
+3. Recording stops when the sequencer stops, when you press STOP, after 60
+   minutes, or if the write ring buffer fills up. You can close the STEMS menu
+   while recording continues in the background.
+4. **Do not remove the CF card or power off until the status reads `DONE`.**
+   The take folder is created as soon as recording starts, so seeing the
+   folder on the card does not mean saving is complete.
 
-The status updates by itself while STEMS is open. Error names: `RING
-FULL` (the card fell behind; the files still play), `SAME MINUTE` (99
-takes in this minute already),
-`WRITE FAILED`, `OPEN FAILED`, `PATH FAILED`, `SEEK FAILED`,
-`CLOSE FAILED`, `TASK FAILED`.
+The status line updates automatically while STEMS is open. Possible error
+messages are `RING FULL` (the card could not keep up, though the recorded
+files remain playable), `SAME MINUTE` (99 takes have already been recorded in
+the current minute), `WRITE FAILED`, `OPEN FAILED`, `PATH FAILED`,
+`SEEK FAILED`, `CLOSE FAILED`, and `TASK FAILED`.
 
-- With MASTER TRACK on, T8 is the master bus: its value reads `MASTER`, a
-  take leaves T8 out, and MAIN is T8 alone. T1 to T7 and CUE are 32
-  samples (0.73 ms) early against MAIN in that mode, and the track files do
-  not sum to MAIN.
-- Each take also writes a log, `/BRAIN/STEMS/<take>.TXT` at the card's
-  root, where BRAIN keeps its files.
+- When MASTER TRACK is enabled, T8 acts as the master bus: its row shows
+  `MASTER`, T8 is omitted from the take, and MAIN records T8's output alone.
+  In this mode, T1–T7 and CUE lead MAIN by 32 samples (0.73 ms), and the
+  individual track files do not sum directly to MAIN.
+- Each take also writes a log file to `/BRAIN/STEMS/<take>.TXT` under the
+  card's root BRAIN directory.

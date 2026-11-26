@@ -1,31 +1,36 @@
-**Crush insert.** Drive into a wavefolder, hard/soft clip, then combined
-bit-depth + sample-rate crush, with a feedback loop and tone shelf. MODE
-**CHAOS** flips feedback polarity from a free-running ramp so the loop
-self-modulates into hash and dropouts. **LIM** is a stereo peak limiter
-after **MIX**. **MIX 0** is exact dry when **LIM** is 0.
+SHATTER is a distortion and bitcrusher insert effect that chains input drive
+into a wavefolder, a hard or soft clipper, and a combined bit-depth and
+sample-rate crusher, wrapped in a feedback loop with a tone shelf. In
+**CHAOS** mode, a free-running ramp flips the feedback polarity so the loop
+self-modulates into noise bursts and dropouts. **LIM** is a stereo peak
+limiter placed after **MIX**. Setting **MIX** to 0 gives an exact dry
+passthrough when **LIM** is 0.
 
 ![SHATTER: DRV → FOLD → CLIP → CRSH with FDBK loop into MIX, then LIM.](../../img/shatter/path.svg)
 
 ## Access
 
 Select a track, press **`[FX2]`** (or **`[FX1]`** when the remix lists it
-there), pick **SHATTER**.
+there), and choose **SHATTER**.
 
 ## Operation
 
-Start with **MIX** up and everything else at 0. Raise **DRV** into the
-folder, **FOLD** for folds, **CLIP** for the brick, **CRSH** for bit/SRR
-grit. **FDBK** recirculates the crush path. **TONE** shelves that loop.
-MODE **CHAOS** flips **FDBK** polarity at **RATE**. Raise **LIM** to catch
-the post-MIX peaks when the crush path is hot.
+Start with **MIX** turned up and all other controls at 0. Raise **DRV** to
+push the signal into the wavefolder, **FOLD** to add wavefolding, **CLIP** to
+lower the clipping threshold toward a brick wall, and **CRSH** to add
+bit-depth and sample-rate reduction. **FDBK** feeds the crushed signal back
+through the chain, and **TONE** applies a tilt shelf inside the feedback loop.
+In **CHAOS** mode, **RATE** sets how fast the feedback polarity flips.
 
-**DRV** and **FOLD** add drive before the dirt stages. SHATTER compensates
-**DRV** after the chain. **FOLD** uses partial compensation, so the folded
-signal keeps more level as you raise it. Quiet signals can get louder at high
-**FOLD** settings. Use **MIX** to balance the effect. **CLIP**, **CRSH** and
-**FDBK** also change the sound and its level. **FDBK** has a lower maximum loop
-gain. Raise **LIM** to catch peaks when the processed signal is hot.
-MODE/**TONE**/**RATE** are easiest with **CLIP** open and **FDBK** up.
+**DRV** and **FOLD** both add gain ahead of the distortion stages. SHATTER
+compensates for **DRV** after the chain, whereas **FOLD** uses partial
+compensation so the folded signal gets louder as you turn it up (quiet inputs
+can become noticeably louder at high **FOLD** settings). **CLIP**, **CRSH**,
+and **FDBK** also affect both timbre and level, though **FDBK** uses a reduced
+maximum loop gain to stay controllable. Use **MIX** to balance the wet signal,
+and raise **LIM** to catch post-mix peaks when the processed signal runs hot.
+**MODE**, **TONE**, and **RATE** are easiest to hear with **CLIP** open and
+**FDBK** raised.
 
 ## Parameters
 
@@ -42,7 +47,7 @@ MODE/**TONE**/**RATE** are easiest with **CLIP** open and **FDBK** up.
 | RATE | 64 | CHAOS polarity flip rate; ignored in HARD/SOFT |
 | LIM | 0 | peak limiter after MIX; 0 off, 1..127 ≈ -2.5..-12 dB ceiling |
 
-**LIM** leaves quiet passages at their original level. Higher settings lower
-the peak ceiling from about -2.5 to -12 dBFS. It adds no makeup
-gain. Hot signals see progressive gain reduction. At LIM max, block peaks cap
-at about -12 dBFS.
+**LIM** leaves quiet passages at their original level and applies no makeup
+gain. Raising it lowers the peak ceiling progressively from about -2.5 dBFS
+down to -12 dBFS, so hot signals receive increasing gain reduction and block
+peaks cap at about -12 dBFS at maximum.

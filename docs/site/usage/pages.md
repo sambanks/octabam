@@ -1,16 +1,16 @@
-PAGES lets several modules share a page key: pressing the key again on its
-own page steps through their pages, then back to the stock page. A double
-press still opens the stock setup.
+PAGES allows multiple modules to share a single page key. Pressing a page key
+while already on that page cycles through the added module pages and then
+returns to the stock page. A double-press still opens the stock setup page.
 
-Today it serves **SRC** on a MIDI track, for CHORDS FACTORY's page, and
-**SRC** on an audio track, for DRUMMER's KIT BALANCE page where an image
-has DRUMMER (the zones' mix, on a DRUMMER track only: on any other track
-the press does what stock does, nothing).
+Currently, PAGES serves **SRC** on MIDI tracks (opening CHORDS FACTORY's page)
+and **SRC** on audio tracks when DRUMMER is installed (opening DRUMMER's KIT
+BALANCE page to mix zones on a DRUMMER track; on other audio tracks, pressing
+SRC again does nothing, as on stock firmware).
 
-A page can also take **parameter locks** on steps and scenes, for the
-parameters its module declares lockable: hold a trig in GRID RECORDING (or
-a scene key) and turn a knob, as on a stock page. The locks play as
-stock's (from their step to the track's next trig; scenes on the
-crossfader), follow their trigs through copy, paste and clear, and are
-saved with the project. Today DRUMMER's
-KIT BALANCE takes them.
+Module pages can also support step and scene **parameter locks** for any
+parameters the module declares lockable. Hold a trig in GRID RECORDING (or
+hold a scene key) and turn a knob, just as on a stock page. Step locks hold
+from their step until the track's next trig, and scene locks respond to the
+crossfader. Locks follow their trigs through copy, paste, and clear
+operations, and are saved with the project. Currently, DRUMMER's KIT BALANCE
+page supports these locks.

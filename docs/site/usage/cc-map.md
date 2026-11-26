@@ -1,5 +1,4 @@
-MIDI CC numbers that stock ignores now reach page 2 of FX1 and FX2. Stock
-incoming CC writes page 1 only (CC 16–45).
+This module maps MIDI CC numbers that stock OS ignores to page 2 of FX1 and FX2. Stock OS only accepts incoming CCs for page 1 parameters (CC 16–45).
 
 ## The CC numbers
 
@@ -10,14 +9,9 @@ incoming CC writes page 1 only (CC 16–45).
 
 ## Operation
 
-Send the CC on a track's channel, with AUDIO CC IN on. The value is
-clamped to the slot's range. With MODE DEFAULTS in the image, a MODE
-sent over CC re-defaults the knobs around it.
+With AUDIO CC IN enabled, send any of the CCs above on the target track's MIDI channel. Incoming values are clamped to each parameter's valid range. When MODE DEFAULTS is also included, changing a MODE parameter via CC resets its associated knobs to their defaults.
 
 ## Notes
 
-- Only the FX1 block does anything in this image: FX2 page 2 is reached only
-  when a track's FX2 is a delay or reverb server, which this image does not
-  have. FX1 page 2 works on any FX1 effect except NONE.
-- The value is written where the panel's own page-2 editor writes it, so
-  the effect follows it on the next audio frame.
+- FX1 page 2 works on any FX1 effect except NONE. FX2 page 2 only applies when a track's FX2 slot hosts a bus delay or reverb server, so in remixes without those servers, only the FX1 CCs take effect.
+- Values are written directly to the same memory locations used by the front-panel page-2 editor, so the effect updates on the next audio frame.

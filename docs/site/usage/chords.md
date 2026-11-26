@@ -1,44 +1,23 @@
-CHORDS FACTORY gives a MIDI track a bank of sixteen chords per bank, one
-per trig key, built by hand or voiced from one another so the voices move
-as little as possible. The chords play from the trig keys, from the
-sequencer and through the arpeggiator.
+CHORDS FACTORY gives each MIDI track a bank of 16 chords per bank, one per trig key. You can build chords manually or voice them from one another to minimize voice movement. Chords can be played from the trig keys, sequenced in patterns, and routed through the arpeggiator.
 
 ## Access
 
-On a MIDI track, press **SRC** again on the MIDI NOTE page (below). The
-chords are saved with the project.
+On a MIDI track, press **SRC** a second time while on the MIDI NOTE page to open the CHORDS page. Chords are saved with the project.
 
 ## The atelier
 
-On a MIDI track, press **SRC** again on the MIDI NOTE page: the CHORDS page
-opens; press it again to close it. The page shows the slot's four notes,
-the sixteen slots and six settings:
+Pressing **SRC** again from the MIDI NOTE page opens the CHORDS page, and pressing it once more closes the page. The screen displays the selected slot's four notes, all 16 slots, and six parameters:
 
-- **A ROOT**, **B TYPE**: the chord. After a slot that holds a chord, the
-  new chord is voiced from it (VOIX 1, the smoothest).
-- **C INV**, **D SPRD**, **E OCT**: a built chord's inversion, spread (CLS,
-  DRP2, DRP3, OPEN, BASS, 10E, WIDE: each wider than the last) and octave.
-  On a voiced or edited chord these cells are empty; turning one builds
-  the chord again.
-- **F VOIX**: the next voicing from the chord before, best first.
+- **A ROOT** and **B TYPE** choose the chord's root note and quality. When placed after a slot that already holds a chord, the new chord is automatically voiced from it using VOIX 1 (the smoothest transition).
+- **C INV**, **D SPRD**, and **E OCT** set a generated chord's inversion, spread (CLS, DRP2, DRP3, OPEN, BASS, 10E, WIDE, from narrowest to widest), and octave. These fields appear blank on a voiced or manually edited chord; turning any of them rebuilds the chord from scratch.
+- **F VOIX** cycles through alternative voicings relative to the preceding chord, ordered from smoothest onward.
 
-Hold a **trig key** to choose its slot and hear it. Hold **FUNC** and the
-trig keys become a keyboard from the slot's octave (trig 1 = C): a key adds
-or removes its note. The keys show the chord's notes green and, with
-SCALES, the track's scale (tonic yellow, scale red). With FUNC held, A-D
-move one voice a semitone, E keeps the bass on the root or frees it, and F
-steps through the scale's chords (with SCALES).
+Hold a **trig key** to select its slot and audition the chord. Hold **FUNC** to turn the trig keys into a keyboard starting at the slot's octave (trig 1 = C), where pressing a key adds or removes that note. The trig LEDs light green for notes in the chord; when SCALES is active, they also show the track's scale (tonic in yellow, other scale degrees in red). While holding **FUNC**, knobs A–D shift individual voices by a semitone, E toggles whether the bass stays locked to the root, and F steps through the scale's chords (when SCALES is active).
 
 ## Playing the chords
 
-Hold the track key and choose **CHORDS** in the trig-mode list (FUNC +
-DOWN). The trig keys play the slots: green when a slot holds a chord,
-yellow while held. The arpeggiator plays the chord's notes. The box on the
-main screen shows the last chord, its bass and how it was made.
+Hold the track key and select **CHORDS** in the trig-mode list (FUNC + DOWN). The trig keys then trigger the chord slots, lighting green when populated and yellow while held. The arpeggiator plays the notes of the triggered chord, and the box on the main screen displays the last chord played, its bass note, and how it was built.
 
-To put chords in a pattern: record live (REC + PLAY, play the trig keys),
-or in GRID RECORDING hold the trigs and press **UP**: choose a chord in the
-list (UP / DOWN, each heard) and press **YES**. With SCALES, a chord step
-plays as written, whatever the KEY.
+To record chords into a pattern, record live (press REC + PLAY and play the trig keys), or hold trigs in GRID RECORDING and press **UP** to select a chord from the list (use UP and DOWN to audition each slot, then press **YES**). When SCALES is active, sequenced chord steps play as written regardless of the KEY setting.
 
-The chords are saved with the project (`chords.work`).
+All chords are saved with the project in `chords.work`.

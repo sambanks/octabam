@@ -16,40 +16,41 @@ We are getting close to our first stable releases now, so watch this space!
 
 ## What it is
 
-Octabam is an unofficial community remixer for the Elektron Octatrack's
-operating system. It is not affiliated with Elektron. A **module** adds one
-feature; a **remix** is a named set of modules built into one image from
-your own copy of OS 1.40C. This site covers Octabam v0.5, three remixes
-([Octabam](remix-octabam.md), [Octabam Verbs](remix-octabam-verbs.md) and
-[Octabam Bus](remix-octabam-bus.md)); [Create your own remix](own-remix.md)
-covers choosing other modules.
+Octabam is an unofficial community firmware remixer for the Elektron Octatrack,
+and is not affiliated with Elektron. A **module** adds a single feature, and a
+**remix** is a named set of modules built into one image from your own copy of
+OS 1.40C. This site covers Octabam v0.5 and its three official remixes:
+[Octabam](remix-octabam.md), [Octabam Verbs](remix-octabam-verbs.md), and
+[Octabam Bus](remix-octabam-bus.md). See
+[Create your own remix](own-remix.md) if you want to combine other modules.
 
 ## How it is made
 
-- Every module is contributed by its author and credited on its page and in
-  [Credits](reference/manual/credits.md).
-- A module ported from an existing mod is checked byte for byte against the
-  author's own build.
-- The build refuses to combine modules that claim the same memory, hook or
-  effect id, and names the clash.
-- Images are derived from your own OS 1.40C on your own computer, in the
-  browser or from source. The built file contains Elektron's OS and stays
-  with you.
-- Source, issues and pull requests are in the
-  [repository](https://github.com/sambanks/octabam). The licence is MIT for
-  the repository's own code and documentation; Elektron's firmware is not
+- Each module is contributed by its author and credited on its manual page and
+  in [Credits](reference/manual/credits.md).
+- Modules ported from existing mods are checked byte for byte against the
+  original author's build.
+- The build catches conflicts if two selected modules claim the same memory,
+  hook, or effect ID, and reports both by name.
+- Firmware images are built locally from your own copy of OS 1.40C, either in
+  the browser or from source. Because built images contain Elektron's OS, keep
+  them private.
+- Source code, issues, and pull requests live in the
+  [repository](https://github.com/sambanks/octabam). The repository's own code
+  and documentation are licensed under MIT; Elektron's firmware is not
   distributed.
 
 ## Status and testing
 
-Octabam is a community project and version 0.1 was its first release; this site is version 0.5. If
-something misbehaves, see [Safety and Recovery](safety.md) and report it on
-GitHub Issues.
+Octabam is a community project currently at version 0.5 (version 0.1 was the
+initial release). If you run into a bug or crash, see
+[Safety and Recovery](safety.md) and report it on GitHub Issues.
 
 ## Get involved
 
-[GitHub Issues](https://github.com/sambanks/octabam/issues) take bug
-reports, module proposals and hardware test reports. Pull requests are
-accepted for a module, a port of an existing mod, a fix, or a doc
-correction; [CONTRIBUTING](https://github.com/sambanks/octabam/blob/main/CONTRIBUTING.md)
-has the rules.
+Use [GitHub Issues](https://github.com/sambanks/octabam/issues) for bug
+reports, module proposals, and hardware test reports. Pull requests are welcome
+for new modules, ports of existing mods, bugfixes, and documentation
+improvements; see
+[CONTRIBUTING](https://github.com/sambanks/octabam/blob/main/CONTRIBUTING.md)
+for the guidelines.

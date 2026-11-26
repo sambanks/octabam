@@ -1,21 +1,29 @@
-A 4-voice wavetable voice, one per track, as a machine of its own: **WAVE**. It needs no sample and gives up
-no stock effect. It plays eight tables (sine, triangle, saw, square and four pulses) with a position knob that
-morphs between neighbours, and a chord of up to four notes from one note. There is no filter in it: the
-Octatrack's own effects and AMP page follow.
+**WAVE** is a 4-voice wavetable synthesizer machine, available per track, that
+needs no sample and replaces no stock effect. It plays eight waveforms (sine,
+triangle, saw, square, and four pulse widths) with a position knob that morphs
+smoothly between adjacent tables, and can play chords of up to four notes from
+one trigger. It has no built-in filter, instead feeding directly into the
+Octatrack's AMP page and track effects.
 
 ## Limit
 
-A Part holds at most two machines of any kind: WAVE and [OCTA-303](octa303.md) together. Choosing a third shows
-`MAX 2 MACHINES` and the track becomes plain FLEX, and a project that has more loses the extra machines when it
-loads (they become FLEX). Each playing machine takes a share of the processor, and with more the panel stops
-answering while the audio keeps playing.
+A Part supports at most two synth machines in total across WAVE and
+[OCTA-303](octa303.md). Selecting a third shows `MAX 2 MACHINES` and reverts
+the track to a plain FLEX machine; loading a project with more than two
+converts the extra tracks to FLEX. Each playing machine takes a significant
+share of processor time, and running more than two causes the front panel to
+stop responding even while audio continues to play.
 
 ## Access
 
-Double-tap the [TRACK] key to open the machine list, choose **WAVE** (below OCTA-303 when both are in the
-image, and the list scrolls to it), [YES]. [FUNC] + [SRC] opens the same list; on a track with a sample it shows
-the sample list first, and [LEFT] reaches the machines. A new WAVE track starts at TUNE C3, FRAM 0, CHRD MAJ,
-VOIC 3, SPRD 0, GLID 0, and its AMP page at ATK 0, HOLD 40, REL 56 (the stock AMP page holds a note forever). [STOP] ends every WAVE note at once, whatever the AMP page says.
+Double-tap a [TRACK] key to open the machine list, select **WAVE** (listed
+below OCTA-303 when both are installed; scroll down to reach it), and press
+[YES]. [FUNC] + [SRC] opens the same menu; on a track with an assigned sample,
+it shows the sample list first and you can press [LEFT] to reach the machine
+list. A new WAVE track starts with TUNE C3, FRAM 0, CHRD MAJ, VOIC 3, SPRD 0,
+and GLID 0, and its AMP page initialized to ATK 0, HOLD 40, and REL 56 (unlike
+stock tracks, whose default AMP settings hold indefinitely). Pressing [STOP]
+ends every WAVE note immediately regardless of the AMP settings.
 
 ## Controls
 
@@ -35,9 +43,11 @@ VOIC 3, SPRD 0, GLID 0, and its AMP page at ATK 0, HOLD 40, REL 56 (the stock AM
 | SETUP | COMP | 0 off; above it, a drive into a soft clip (saturation) with makeup |
 | SETUP | MODE | CHORD: a trig plays the chord and replaces the last. POLY: each trig takes the next of the VOIC voices and plays one note; older notes keep sounding until the AMP page closes them |
 
-If SCALE QUANTIZER has a scale set, every note, chord notes included, moves to the nearest note of the scale (ties
-go down, so a major chord in a minor scale comes out minor). The AMP page (ATK, HOLD, REL) shapes how long you hear
-each note. LFO SETUP names a WAVE track's destinations as a FLEX track's (PTCH STRT LEN RATE RTRG RTIM), though the
-knobs they move are the six above.
+If SCALE QUANTIZER has an active scale, every note (including chord notes)
+quantizes to the nearest scale tone; ties round down, so a major chord in a
+minor scale becomes minor. The AMP page (ATK, HOLD, REL) shapes how long each
+note sounds. On the LFO SETUP page, WAVE destinations still display the stock
+FLEX labels (PTCH, STRT, LEN, RATE, RTRG, RTIM), though they modulate the six
+SRC knobs listed above.
 
 ## Checked

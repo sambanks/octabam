@@ -1,4 +1,4 @@
-Stops a stall at START and at a program change in which the sequencer
-holds step 1 until a power-cycle; it was most frequent with a computer
-recording the USB audio. There is nothing to operate and nothing on the
-panel.
+FRAME GUARD prevents a stall at START or on a program change in which the
+sequencer freezes on step 1 until the unit is power-cycled. The issue occurred
+most often when recording USB audio on a computer. It has no controls or panel
+indicators.
