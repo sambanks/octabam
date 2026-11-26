@@ -29,6 +29,7 @@ octatrick-usb, octatrick-tuner).
 """
 
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 
 REMIX = Remix(
     name="octatrick",
@@ -40,11 +41,8 @@ REMIX = Remix(
     doc="SYNTH MACHINE + SCALE QUANTIZER + DIRECT JUMP + TUNER + USB (20 channels out, 4 in onto A-D) on the stock effects less SPATIALIZER.",
     modules=("DIRECT JUMP", "SCALE QUANTIZER", "SYNTH MACHINE", "TUNER",
              "USB",
-             "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
-             "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
-             "PLATE REV", "SPRING REV", "DARK REV"),
-    fx1=("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
-         "COMB FILTER", "COMPRESSOR", "LO-FI"),
+             *stock.effects("SPATIALIZER")),
+    fx1=stock.fx1_effects("SPATIALIZER"),
     fallback="NONE",
     settings={("octabam.usb", "TRACKS"): "PRE", ("octabam.usb", "MAIN"): 1,
               ("octabam.usb", "CUE"): 1, ("octabam.usb", "MASTER"): 0,

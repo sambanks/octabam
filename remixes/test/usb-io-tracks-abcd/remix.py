@@ -8,6 +8,7 @@ inject: listed on neither chooser, so neither menu offers it.
 """
 
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 
 REMIX = Remix(
     name="usb-io-tracks-abcd",
@@ -16,11 +17,8 @@ REMIX = Remix(
         note="`make check` (verify_usb, verify_usb_in) under the port, 28 Sep 2026; not on hardware in this form"),),
     doc="stock - SPATIALIZER + USB (TRACKS out, ABCD in).",
     modules=("USB",
-             "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
-             "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
-             "PLATE REV", "SPRING REV", "DARK REV"),
-    fx1=("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
-         "COMB FILTER", "COMPRESSOR", "LO-FI"),
+             *stock.effects("SPATIALIZER")),
+    fx1=stock.fx1_effects("SPATIALIZER"),
     fallback="NONE",
     settings={("octabam.usb", "TRACKS"): "PRE", ("octabam.usb", "MAIN"): 0,
               ("octabam.usb", "CUE"): 0, ("octabam.usb", "MASTER"): 0,

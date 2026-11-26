@@ -1,6 +1,7 @@
 """drummer -- DRUMMER alone on the stock effects (its gates)."""
 
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 
 REMIX = Remix(
     name="drummer",
@@ -8,8 +9,6 @@ REMIX = Remix(
         note="images 52-78 (Nov 2026); modules/drummer/verify_port.py and the module's gates"),),
     doc="DRUMMER alone: T1's sliced loop played as a drummer.",
     modules=("DRUMMER", "STORE", "MACHINES", "PAGES", "EVENTS",
-             "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
-             "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
-             "PLATE REV", "SPRING REV", "DARK REV"),
+             *stock.EFFECTS),
     fallback="NONE",
 )

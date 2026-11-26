@@ -1,6 +1,7 @@
 """scope-alone -- SCOPE without TUNER, on stock FX."""
 
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 
 REMIX = Remix(
     name="scope-alone",
@@ -11,9 +12,7 @@ REMIX = Remix(
     doc="stock effects with standalone SCOPE and no TUNER module.",
     modules=(
         "SCOPE",
-        "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",
-        "CHORUS", "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI",
-        "DELAY", "PLATE REV", "SPRING REV", "DARK REV",
+        *stock.EFFECTS,
     ),
     fallback="NONE",
 )

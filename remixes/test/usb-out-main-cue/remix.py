@@ -6,15 +6,14 @@ stock projects. Local test remix (27 Sep 2026).
 """
 
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 
 REMIX = Remix(
     name="usb-out-main-cue",
     family="mods", evidence=(Evidence(Level.EMULATOR),),
     doc="stock + USB (MAIN CUE) (4 ch: MAIN + CUE).",
     modules=("USB",
-             "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
-             "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
-             "PLATE REV", "SPRING REV", "DARK REV"),
+             *stock.EFFECTS),
     fallback="NONE",
     settings={("octabam.usb", "TRACKS"): "OFF", ("octabam.usb", "MAIN"): 1,
               ("octabam.usb", "CUE"): 1, ("octabam.usb", "MASTER"): 0,

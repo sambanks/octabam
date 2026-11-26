@@ -2,6 +2,7 @@
 (193 words a payload; payload A has 33 spare in the stock layout). The two stock-meter remixes
 together carry all 14 stock effects with the meter, so every stock effect's slot cost can be read."""
 from remix.schema import Pin, Evidence, Level, Remix
+from remix import stock
 
 CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "CC MAP", "CC FEEDBACK", "USB",
@@ -10,8 +11,7 @@ CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "SCALE QUANTIZER", "TUNER", "DIRECT_JUMP_KYOTI", "RELOAD_FROM_PROJECT", "RLEN PLEN",
         "ATA WRITE GUARD", "EVENTS",
         "LOAD METER")
-STOCK = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",
-         "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY", "PLATE REV", "SPRING REV", "DARK REV")
+STOCK = stock.EFFECTS
 DROPPED = ("PHASER",)
 
 REMIX = Remix(

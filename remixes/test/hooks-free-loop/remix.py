@@ -1,6 +1,7 @@
 """FREE LOOP beside REC_TRIG_MUTE and REC THRESHOLD: HOOKS chains the status icons (REC THRESHOLD, FREE LOOP) and the step handler's recorder-trig test (FREE LOOP, REC_TRIG_MUTE)."""
 
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 
 REMIX = Remix(
     name="hooks-free-loop",
@@ -11,8 +12,6 @@ REMIX = Remix(
     # ATA WRITE GUARD: stock's first-sector card write has an IRQ window that hung this remix's
     # REC THRESHOLD gate once the icon chain shifted its timing (TRAPS.md trap-first-sector-irq)
     modules=("STORE", "RLEN PLEN", "FREE LOOP", "REC_TRIG_MUTE", "REC THRESHOLD", "ATA WRITE GUARD",
-             "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",
-             "CHORUS", "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI",
-             "DELAY", "PLATE REV", "SPRING REV", "DARK REV"),
+             *stock.EFFECTS),
     fallback="NONE",
 )

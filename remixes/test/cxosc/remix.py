@@ -5,6 +5,7 @@ MACHINE). Stock FX chooser.
 """
 
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 
 REMIX = Remix(
     name="cxosc",
@@ -13,8 +14,6 @@ REMIX = Remix(
              "verify_cxosc (PLAYBACK FINE/FOLD/MIX, SETUP PWM)"),),
     doc="CX OSC (machine list, no marker): PLAYBACK PTCH RATO INDX FINE FOLD MIX; SETUP CAR MOD DEC SYMM FDBK PWM; stock FX.",
     modules=("CX OSC",
-             "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
-             "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
-             "PLATE REV", "SPRING REV", "DARK REV"),
+             *stock.EFFECTS),
     fallback="NONE",
 )

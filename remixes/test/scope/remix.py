@@ -1,6 +1,7 @@
 """scope -- SCOPE and TUNER on stock FX through the HOOKS dispatcher."""
 
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 
 REMIX = Remix(
     name="scope",
@@ -12,9 +13,7 @@ REMIX = Remix(
     modules=(
         "TUNER",
         "SCOPE",
-        "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",
-        "CHORUS", "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI",
-        "DELAY", "PLATE REV", "SPRING REV", "DARK REV",
+        *stock.EFFECTS,
     ),
     fallback="NONE",
 )

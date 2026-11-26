@@ -5,6 +5,7 @@ HOOKS, which owns the site and calls each module's own routine (modules/hooks).
 """
 
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 
 REMIX = Remix(
     name="hooks",
@@ -14,8 +15,6 @@ REMIX = Remix(
     # ATA WRITE GUARD: stock's first-sector card write has an IRQ window a timing shift
     # can land a port run in (TRAPS.md trap-first-sector-irq; it hung hooks-free-loop)
     modules=("REC THRESHOLD", "FREE LOOP", "STORE", "RLEN PLEN", "ATA WRITE GUARD",
-             "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",
-             "CHORUS", "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI",
-             "DELAY", "PLATE REV", "SPRING REV", "DARK REV"),
+             *stock.EFFECTS),
     fallback="NONE",
 )

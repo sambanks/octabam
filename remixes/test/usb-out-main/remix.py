@@ -7,6 +7,7 @@ return.
 """
 
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 
 REMIX = Remix(
     name="usb-out-main",
@@ -14,9 +15,7 @@ REMIX = Remix(
         note="`verify_usb` under the port, 28 Sep 2026"),),
     doc="stock + USB (MAIN) (2 ch: MAIN L/R).",
     modules=("USB",
-             "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
-             "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
-             "PLATE REV", "SPRING REV", "DARK REV"),
+             *stock.EFFECTS),
     fallback="NONE",
     settings={("octabam.usb", "TRACKS"): "OFF", ("octabam.usb", "MAIN"): 1,
               ("octabam.usb", "CUE"): 0, ("octabam.usb", "MASTER"): 0,

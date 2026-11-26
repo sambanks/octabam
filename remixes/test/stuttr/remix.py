@@ -1,6 +1,7 @@
 """STUTTR beside stock FX (PLATE REV harvested for its words)."""
 
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 
 REMIX = Remix(
     name="stuttr",
@@ -10,9 +11,7 @@ REMIX = Remix(
     doc="STUTTR beside the stock effects (all but PLATE REV, whose words it takes).",
     modules=(
         "STUTTR",
-        "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",
-        "CHORUS", "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI",
-        "DELAY", "SPRING REV", "DARK REV",
+        *stock.effects("PLATE REV"),
     ),
     fallback="NONE",
 )

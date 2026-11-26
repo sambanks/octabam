@@ -3,6 +3,7 @@ DIRECT_JUMP_KYOTI among them) and the 14 stock effects, for running the
 module beside the modules it shares handlers with."""
 
 from remix.schema import Pin, Evidence, Level, Remix
+from remix import stock
 
 CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2", "EVENTS",
         "CC MAP", "CC FEEDBACK", "USB",
@@ -10,8 +11,7 @@ CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2", "EVEN
         "QUANTIZE_LIVE_REC_TOGGLE", "REC_TRIG_MUTE", "MUTE_MODES",
         "SCALE QUANTIZER", "TUNER", "DIRECT_JUMP_KYOTI", "RELOAD_FROM_PROJECT", "RLEN PLEN",
         "ATA WRITE GUARD")
-STOCK14 = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",
-           "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY", "PLATE REV", "SPRING REV", "DARK REV")
+STOCK14 = stock.EFFECTS
 
 REMIX = Remix(
     name="trackpatterns-core",

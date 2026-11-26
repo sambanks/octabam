@@ -4,15 +4,13 @@ A measurement instrument for one hardware run (modules/pextprobe/README.md): it 
 memory reaches above P:0x2000 on each DSP core and reports it in the audio of the track it sits on; USB
 carries the tracks (16 channels, PRE) to the host, which is where the report is read."""
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 REMIX = Remix(family="effects", evidence=(Evidence(Level.EMULATOR),),
               name="pext-probe", doc="PEXT PROBE on FX1 and USB audio out (TRACKS) beside the stock effects (all but EQUALIZER, whose id it takes, and PLATE REV and SPRING REV, whose words it takes).",
               modules=("USB", "PEXT PROBE",
-                       "FILTER", "DJ EQ", "PHASER", "FLANGER",
-                       "CHORUS", "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI",
-                       "DELAY", "DARK REV"),
+                       *stock.effects("EQUALIZER", "PLATE REV", "SPRING REV")),
               fx1=("PEXT PROBE",
-                   "FILTER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
-                   "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI"),
+                   *stock.fx1_effects("EQUALIZER")),
               fallback="NONE",
               settings={("octabam.usb", "TRACKS"): "PRE", ("octabam.usb", "MAIN"): 0,
                         ("octabam.usb", "CUE"): 0, ("octabam.usb", "MASTER"): 0,

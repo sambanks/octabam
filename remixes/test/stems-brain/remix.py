@@ -6,6 +6,7 @@ REC's DramRegions.
 """
 
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 
 REMIX = Remix(
     name="stems-brain",
@@ -13,8 +14,6 @@ REMIX = Remix(
         note="verify_stems_menu under ot_emu"),),
     doc="STEM REC (UP+REC) with BRAIN on the root: coexistence without two menu growers.",
     modules=("STEM REC", "BRAIN", "MEMORY",
-             "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
-             "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
-             "PLATE REV", "SPRING REV", "DARK REV"),
+             *stock.EFFECTS),
     fallback="NONE",
 )

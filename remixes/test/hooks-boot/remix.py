@@ -5,6 +5,7 @@ which sends BOOT TRACE's note 3 and then runs STORE's activation (modules/hooks,
 """
 
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 
 REMIX = Remix(
     name="hooks-boot",
@@ -12,8 +13,6 @@ REMIX = Remix(
         note="verify_hooks: the boot chain under Unicorn and in this image"),),
     doc="BOOT TRACE beside STORE and MIDI LOOPBACK: HOOKS runs both at the boot's post-loader call.",
     modules=("STORE", "MIDI LOOPBACK", "BOOT TRACE",
-             "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",
-             "CHORUS", "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI",
-             "DELAY", "PLATE REV", "SPRING REV", "DARK REV"),
+             *stock.EFFECTS),
     fallback="NONE",
 )

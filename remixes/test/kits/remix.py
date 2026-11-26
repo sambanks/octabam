@@ -5,6 +5,7 @@ stock effects keep the FX choosers stock's.
 """
 
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 
 REMIX = Remix(
     name="kits",
@@ -12,8 +13,6 @@ REMIX = Remix(
         note="verify_kits under the port"),),
     doc="KITS (255 Kits per project) on the stock effects.",
     modules=("STORE", "KITS", "BATCH_BUGFIXES",
-             "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
-             "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
-             "PLATE REV", "SPRING REV", "DARK REV"),
+             *stock.EFFECTS),
     fallback="NONE",
 )

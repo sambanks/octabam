@@ -3,6 +3,7 @@ CORE's LOAD METER); MORPH and REC THRESHOLD, bridged with CORE's REC_TRIG_MUTE u
 553d8d2, stay in. The registry appends HOOKS, which owns the shared sites (modules/hooks). PHASER gives up its words for
 LOAD METER's DSP half (as stock-meter-a); DARK REV's hold CF METER's readout insert (as cfmeter)."""
 from remix.schema import Pin, Evidence, Level, Remix
+from remix import stock
 
 CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "CC MAP", "CC FEEDBACK", "USB",
@@ -12,8 +13,7 @@ CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "ATA WRITE GUARD", "EVENTS",
         "LOAD METER")
 BRIDGED = ("MORPH", "REC THRESHOLD", "CF METER", "CF METER IDLE", "BOOT TRACE")
-STOCK = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",
-         "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY", "PLATE REV", "SPRING REV", "DARK REV")
+STOCK = stock.EFFECTS
 DROPPED = ("PHASER", "DARK REV")
 
 REMIX = Remix(

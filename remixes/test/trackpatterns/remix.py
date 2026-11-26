@@ -1,6 +1,7 @@
 """TRACK PATTERNS with the stock effects: a pattern per track, clip style."""
 
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 
 REMIX = Remix(
     name="trackpatterns",
@@ -8,8 +9,6 @@ REMIX = Remix(
         note="functional tests and trig LEDs passed (contributor's report)"),),
     doc="TRACK PATTERNS with the stock effects: hold TRACK + PATTERN + TRIG for a pattern per track.",
     modules=("TRACK PATTERNS",
-             "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",
-             "CHORUS", "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI",
-             "DELAY", "PLATE REV", "SPRING REV", "DARK REV"),
+             *stock.EFFECTS),
     fallback="NONE",
 )
