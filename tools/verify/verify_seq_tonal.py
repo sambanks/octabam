@@ -350,6 +350,16 @@ def main() -> int:
           and "movel   (%sp)+,%d4" in chord
           and "movel   %d4,-(%sp)" in chord_clear
           and "movel   (%sp)+,%d4" in chord_clear)
+    synth = block(src, "\nef_is_synth:\n", "\nef_bit_addr:\n")
+    selected = block(src, "\nef_pitch_selected:\n", "\nef_dest_label:\n")
+    check("OCTA-303 and WAVE CF TUNE tracks use semitone pitch locks",
+          "#0x5442,%d0" in synth and "#0x5756,%d0" in synth
+          and "#MACH_OFF,%a1" in synth and "moveq   #2,%d0" in synth
+          and "#0x54554e45,%d0" in selected
+          and "moveq   #PIT_TUNE,%d4" in ptch
+          and "moveq   #TUNE_LO,%d1" in ptch and "moveq   #TUNE_HI,%d1" in ptch
+          and ".set    TUNE_LO,   64-PIT_TUNE" in src
+          and ".set    TUNE_HI,   64+PIT_TUNE" in src)
     check("audio pitch ignores MIDI-only harmony and mode settings",
           "ef_tone_harm" not in ptch
           and "ef_tone_mode" not in block(src, "ef_pitch_rank:", "ef_snap_note:"))

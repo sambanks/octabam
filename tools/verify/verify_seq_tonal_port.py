@@ -111,6 +111,26 @@ def main() -> int:
             check("LEFT restores page 1/2 without changing the grid",
                   p.long(page) == 0 and seq.mask_of(p) == grid,
                   f"page={p.long(page)} grid={seq.mask_of(p).hex()} original={grid.hex()}")
+
+            # OCTA-303 and WAVE CF sign a FLEX track; slot-0 TUNE is one raw
+            # step per semitone in 40..88, unlike a sample's five.
+            sig = part + seq.SIG_OFF
+            tune = part + 0x8edaa + 6  # FLEX PLAYBACK slot 0, T1
+            original_sig = p.peek(sig, 3)
+            original_tune = p.peek(tune, 1)
+            major = {0, 2, 4, 5, 7, 9, 11}
+            for name, signature in (("OCTA-303", b"TB\x01"), ("WAVE CF", b"WV\x01")):
+                p.poke(sig, signature)
+                p.poke(tune, bytes((88,)))
+                s.prime(lane=0, dest=0, depth=127, pulses=8, trig_pulses=8)
+                s.yes()
+                locks = [v for v in seq.locks_of(p, seq.LOCK_PTCH) if v != 0xFF]
+                check(f"{name} TUNE fill writes in-scale semitones inside C1..C5",
+                      len(locks) == 8 and all(40 <= v <= 88 for v in locks)
+                      and all((v - 64) % 12 in major for v in locks),
+                      f"locks={locks}")
+            p.poke(sig, original_sig)
+            p.poke(tune, original_tune)
             s.close_seq()
 
             # The stock Project menu must own arrows as soon as SEQ is closed.

@@ -18,8 +18,12 @@ audio and MIDI. MIDI C=**VOIC** 1 to 4 and F=**CHRD**; audio C and F are empty.
 Fresh audio settings select **SRC** / **PTCH**; MIDI settings select
 **NOTE**. The page hint sits at the top-right of the SEQ logo panel.
 Audio pitch availability follows the resolved parameter name: FLEX PTCH
-opens Harmony, while THRU INAB stays on Rhythm without the RIGHT hint.
-`verify_seq_tonal_port.py` checks both machines through the panel.
+and OCTA-303 / WAVE CF TUNE open Harmony, while THRU INAB stays on Rhythm
+without the RIGHT hint. On a FLEX track signed by OCTA-303 (`TB`,1) or
+WAVE CF (`WV`,1), slot-0 TUNE locks are one raw step per semitone, raw 64
+= C3, span up to 24 semitones and fold by octaves into C1..C5 (raw 40..88).
+`verify_seq_tonal_port.py` checks THRU and FLEX through the panel and fills
+both signed tracks with Part TUNE at C5.
 **LANE** selects whether A/B and the grid edit the **TRIG** rhythm or the
 **PLOCK** rhythm for the current destination. **`[YES]`** writes the TRIG
 rhythm and selected destination's locks. On audio tracks, TRIG writes sample
@@ -114,8 +118,9 @@ use (TRIG: reshape to trig set; PLOCK: clear on hits/misses). Non-zero:
 
 - **DEST = PTCH:** DPTH sets pitch variation around the Part PLAYBACK PTCH.
   SEQ chooses pitches from SCAL and ROOT. FM, SY and CX can span up to 64
-  semitones either side, limited by the raw PTCH range. Silent / PLCK misses
-  fall back to Part.
+  semitones either side, limited by the raw PTCH range. OCTA-303 and WAVE CF
+  TUNE span up to 24 semitones, folded by octaves into C1..C5. Silent / PLCK
+  misses fall back to Part.
 - **DEST = AMP VOL:** unipolar below Part AMP VOL.
 - **Any other DEST:** uniform `[Part−DPTH .. Part+DPTH]` clamped 0..127.
 

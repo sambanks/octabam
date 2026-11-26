@@ -220,8 +220,12 @@
         | DEST=PTCH: rad = max_rad*DEPTH/127 (min 1 if DEPTH>0).
         | PIT_RAD 64 spans the full raw PTCH range around 64 for FM/SY/CX.
         | PIT_SAMP 12 = sample PLAYBACK max |st|.
+        | PIT_TUNE 24 = OCTA-303 / WAVE CF TUNE, raw TUNE_LO..TUNE_HI (C1..C5).
         .set    PIT_RAD,   64
         .set    PIT_SAMP,  12
+        .set    PIT_TUNE,  24
+        .set    TUNE_LO,   64-PIT_TUNE
+        .set    TUNE_HI,   64+PIT_TUNE
         .set    EF_MAGIC,  0x4546494c   | 'EFIL'
         .set    EF_VER,    12           | v12 appends page-2 depth and plock settings
         .set    EF_BANK_B, 224          | 8 tracks * 28
@@ -2164,8 +2168,9 @@ tk_done:
         rts
 
 
-| Slot zero is NOTE on MIDI, but INAB on THRU. Use the audio descriptor's
-| actual parameter name for both the page hint and the RIGHT handler.
+| Slot zero is NOTE on MIDI, but INAB on THRU and TUNE on OCTA-303 / WAVE CF.
+| Use the audio descriptor's actual parameter name for both the page hint
+| and the RIGHT handler.
 | Keeps d2/d3, clobbers d0/d1/a0/a1 like ef_dest_label.
 ef_pitch_selected:
         tstl    ef_dest
@@ -2179,6 +2184,8 @@ eps_page:
         bne.s   eps_page
         movel   %a0@,%d0
         cmpil   #0x50544348,%d0         | PTCH
+        beq.s   eps_yes
+        cmpil   #0x54554e45,%d0         | TUNE (OCTA-303, WAVE CF)
         bne.s   eps_no
 eps_yes:
         moveq   #1,%d0
@@ -3155,7 +3162,8 @@ ev1:    movel   %d1,%d0
 | lock encodes base_st+delta. Center is Part PLAYBACK PTCH (overall
 | knob), not unison - same byte stock unlocks fall back to.
 | FM/SY/CX: raw=64+st (max_rad=PIT_RAD). Sample: raw=64+5·st (PIT_SAMP).
-| Clamp raw to 0..127 before store.
+| OCTA-303 / WAVE CF TUNE: raw=64+st (PIT_TUNE), folded by octaves into
+| TUNE_LO..TUNE_HI. Clamp raw to 0..127 before store.
 | Caller keeps n in d5 and rot in d6 - park across the pick.
 | ef_tone_mask returns the selected SEQ-owned scale as a 12-bit mask.
 ef_tone_mask:
@@ -3772,7 +3780,11 @@ ef_write_ptch:
         movel   %d0,%d7                 | mask
         bsr.w   ef_is_synth
         moveq   #PIT_RAD,%d4            | max_rad
-        tstl    %d0
+        moveq   #2,%d1
+        cmpl    %d1,%d0
+        bne.s   3f
+        moveq   #PIT_TUNE,%d4
+3:      tstl    %d0
         bne.s   1f
         moveq   #PIT_SAMP,%d4
 1:      movel   %d0,-(%sp)              | park is_synth
@@ -3893,9 +3905,24 @@ ep_got: | d1 = delta; abs st = base_st + delta
         movel   (%sp)+,%d0              | is_synth
         tstl    %d0
         beq.s   ep_samp
+        moveq   #2,%d1
+        cmpl    %d1,%d0
+        beq.s   ep_tune
         moveq   #64,%d0
         addl    %d3,%d0                 | synth: 64+st
         bra.s   ep_clamp
+ep_tune: moveq   #64,%d0
+        addl    %d3,%d0                 | TUNE: 64+st, octave-folded into range
+ep_tlo: moveq   #TUNE_LO,%d1
+        cmpl    %d1,%d0
+        bge.s   ep_thi
+        addil   #12,%d0
+        bra.s   ep_tlo
+ep_thi: moveq   #TUNE_HI,%d1
+        cmpl    %d1,%d0
+        ble.s   ep_ok
+        subil   #12,%d0
+        bra.s   ep_thi
 ep_samp: move.l  %d3,%d0
         moveq   #5,%d1
         muls.l  %d1,%d0
@@ -4524,7 +4551,9 @@ ecc_done:
         rts
 
 | ef_is_synth: d0 := 1 when ef_trk's Part NEIGHBOR sig is "FM",1 / "SY",1
-| / "CX",1 (same semitone encoding as qz_is_synth / qz_fmtrack). Else 0.
+| / "CX",1 (same semitone encoding as qz_is_synth / qz_fmtrack); 2 for a
+| FLEX track signed "TB",1 (OCTA-303) or "WV",1 (WAVE CF), whose slot-0
+| TUNE is semitones in raw TUNE_LO..TUNE_HI. Else 0.
 | Clobbers d0/d1/a0/a1 only - caller parks what it needs.
 ef_is_synth:
         moveal  DBPTR,%a0
@@ -4548,7 +4577,21 @@ ef_is_synth:
         cmpil   #0x5359,%d0             | "SY"
         beq.s   eis_yes
         cmpil   #0x4358,%d0             | "CX"
+        beq.s   eis_yes
+        cmpil   #0x5442,%d0             | "TB"
+        beq.s   eis_tune
+        cmpil   #0x5756,%d0             | "WV"
         bne.s   eis_no
+eis_tune:
+        move.l  ef_trk,%d1
+        lea     %a0@(0,%d1:l),%a1       | a0 = Part
+        addal   #MACH_OFF,%a1
+        moveq   #0,%d0
+        moveb   (%a1),%d0
+        subql   #1,%d0                  | FLEX
+        bne.s   eis_no
+        moveq   #2,%d0
+        rts
 eis_yes: moveq   #1,%d0
         rts
 eis_no: moveq   #0,%d0
