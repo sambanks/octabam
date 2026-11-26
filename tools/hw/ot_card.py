@@ -162,6 +162,15 @@ def same_tree(a, b):
     return all(same_tree(os.path.join(a, d), os.path.join(b, d)) for d in cmp.common_dirs)
 
 
+def cf_counting(u):
+    """The ColdFire's frame interrupt count (REMOTE's trace) advances: for an image without LOAD METER, whose
+    request STALLs. It says nothing about the DSP."""
+    base = struct.unpack(">I", ev.read_bytes(u.ctrl, 16, 4))[0]
+    a = struct.unpack(">I", ev.peek(u.peek1, base, 4))[0]
+    time.sleep(0.5)
+    return struct.unpack(">I", ev.peek(u.peek1, base, 4))[0] != a
+
+
 def wait_running(u, timeout=90.0):
     """Seconds until LOAD METER's health rule holds (the DSP's frame count advances, the frame interrupt keeps its
     rate), or None at the timeout. The count is 0 a second for a while after a project load or a boot: a phase that
@@ -177,6 +186,13 @@ def wait_running(u, timeout=90.0):
                 return time.monotonic() - t0
         except (SystemExit, Exception) as e:  # noqa: BLE001
             why = str(e)
+            if "Pipe error" in why:                 # no LOAD METER in this image
+                try:
+                    if cf_counting(u):
+                        print("no LOAD METER in this image: the ColdFire frame count advances; the DSP is not read")
+                        return time.monotonic() - t0
+                except (SystemExit, Exception):  # noqa: BLE001
+                    pass
         time.sleep(1.0)
     print(f"the unit is not running normally after {timeout:.0f} s: {why}")
     return None

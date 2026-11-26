@@ -845,6 +845,14 @@ taken; the unit reset, showed the boot screen and did not return to USB in 150 s
   (without the OTGSC watch) read USBCMD never leaving 0. MB_PARK read 3 after every boot that returned. Not known: why a no-USB boot's RS stays clear, what the boot-screen
   and `SYNCING PROJECT` stops wait on.
 
+- **Sighting with #1233 and #1272 in the image (26 Nov 2026, MKII, `OCTABAM T1`: `octabam` at main `256bcf4b`, flashed from the card).**
+  `ot_card.py boot "OCTABAM T1.RMX"` (the running image's own file) at 16:45: taken, no return in 150 s, unit gone from USB.
+  Power-cycle needed. `out/hw/boot_ledger.tsv` has 3 COMMAND 3 boots from this image:
+  - 16:36, self, prior state healthy: returned in 10 s;
+  - 16:41, from `V06-RIG T1` (no LOAD METER), prior state unknown: returned in 15 s, MB_PARK read 3 after the switch into `V06-RIG T1`;
+  - 16:45, self, prior state healthy (LOAD METER, DSP counting): no return.
+  Between 16:41 and 16:45: one `ot_matrix.py run` of 4 layouts (START, STOP, 4 program changes, LOAD METER reads, host MIDI clock) on a project loaded by DISK MODE at 16:37; no DISK MODE entry. Not known: the DSP's state at the command, the sequencer's state (STOP had been sent), whether `osw_quiesce` ran, MB_PARK after the failure.
+
 |  |
 
 ## USB DISK MODE entered by COMMAND 1, the card never mounts on the Mac: a stale `diskN` after `diskutil unmount`

@@ -36,6 +36,7 @@ import ot_project as P  # noqa: E402
 PY = sys.executable
 STIMULI = "hits,pink,two_tones,sweep,ladder,impulses"
 SIG_OFF = 0x3C
+THRU = 2                                  # machine type byte: STATIC 0, FLEX 1, THRU 2 (inferred)
 SIGS = {"OCTA303": (0x54, 0x42, 1), "WAVE": (0x57, 0x56, 1), "CX OSC": (0x43, 0x58, 1)}
 STEPS = (1, 5, 9, 13)
 
@@ -49,6 +50,9 @@ def machine_slot(pdir, plan, slot, name, sig, tracks, steps=STEPS):
     def mut(data):
         for p in (part, part + P.MTYPE_MIRROR):
             off = P.PART_BASE + (p - 1) * P.PART_STRIDE
+            for t in range(8):
+                if t not in tracks:
+                    data[off + P.MTYPE_OFF + t] = THRU      # a looping stimulus voice would play on across the change
             for t in tracks:
                 data[off + P.MTYPE_OFF + t] = 1
                 at = off + 9 + SIG_OFF + 30 * t

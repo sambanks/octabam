@@ -112,7 +112,7 @@ def diskread(path, reads, play=True):
     """With `play`, the unit is started first on a host clock (the project has CLOCK SEND on and clock and transport
     receive on), so it is sending USB MIDI clock when COMMAND 1 is sent."""
     import ot_ladder
-    clock = ot_ladder.Clock(120.0, "Octatrack") if play else None
+    clock = ot_ladder.Clock(120.0, "Elektron Octatrack DPS-1") if play else None
     if clock:
         clock.start()
         time.sleep(2.0)
