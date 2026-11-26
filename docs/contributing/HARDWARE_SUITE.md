@@ -118,3 +118,35 @@ Failures found while running the suite on earlier images, and the module sets th
 - Real material: all audio is synthetic.
 - The SFX project list is cut at 31 layouts per project; pair and split layouts need `ot_matrix.py predict`
   ([HARDWARE_MATRIX.md](HARDWARE_MATRIX.md)).
+
+## v0.6 checks (`ot_v06.py`)
+
+`tools/hw/ot_v06.py` runs the v0.6 items that need no panel step, over REMOTE (COMMAND 1 to 4 and PEEK). Not run on
+a unit yet.
+
+```bash
+python3 tools/hw/ot_v06.py run --names "A.RMX,B.RMX" --cycles 20 --label v06-1
+```
+
+| check | issue / PR | pass when |
+|---|---|---|
+| `switch` | #1247, #1233, #1272 | every COMMAND 3 returns within 150 s, the running image is the one asked for, MB_PARK (`0x41200038`) reads 3, the DSP frame count advances |
+| `diskread` | #1264 | no 64 KB block of one file differs between 6 reads; none starts `0f f8 00 00` in one read only |
+
+A boot that does not return is the boot-screen stop of #1247; the run stops, and the unit needs a power-cycle.
+`out/hw/boot_ledger.tsv` has every attempt. The other output is `out/hw/v06/<label>/summary.json`.
+
+Preconditions: the names are in `/BRAIN/REMIXES` (`ot_card.py copy`); for `diskread` the project's CLOCK SEND is on
+and the sequencer is playing when COMMAND 1 is sent.
+
+Not reachable over the cable (a panel gesture, or no host-visible result), by `needs unit test` item:
+
+| item | why |
+|---|---|
+| #1246 AED freeze on open | opening AED is a panel action |
+| #1263 CX OSC FOLD clicks | click detection needs the voice playing on a track; no stimulus project for CX OSC |
+| #1255 FRAME GUARD 140 µs | needs MKI with 8 recorders and 8 voices; clicks at bar starts |
+| #1251, #1252 TEMPLATES | panel pages |
+| #1250 TEMPO BUS copy/paste, #1229 TEMPO BUS scene locks | FUNC+REC, FUNC+STOP and scene keys |
+| #1232 WAVE STOP | WAVE machine on a track; stop-edge voices in the USB audio, no phase yet |
+| #1234 VERBERATION, #1219 KEYBUS, #1266 MIDI LOOPBACK, #1270 OCTA303 | audio or MIDI observable over the cable; no phase written yet |
