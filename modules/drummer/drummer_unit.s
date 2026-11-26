@@ -23655,6 +23655,7 @@ dr_rebuild_stub:
 
 | PAGES' locks (pages/locks.c) when the remix has them (PAGES, EVENTS:
 | HAVE_PAGELOCKS from manifest.py), else KIT BALANCE as it is: no lock.
+| remix.inc also sets DR_CLIENT, DRUMMER's number in STORE's CLIENT_IDS.
         .include "remix.inc"
         .globl  dr_pl_step, dr_pl_value, dr_pl_shown, dr_pl_where
 dr_pl_step:                             | (page, track, bank, pattern, step, trig)
@@ -23812,7 +23813,6 @@ dr_l2_encs:
 | d0 in, d0 out, a2 = the context; each clobbers d0, d1, a0, a1). FREE LOOP's.
         .globl  dr_file_path, dr_file_open, dr_file_read, dr_file_write, dr_file_close
         .globl  dr_file_crc, dr_file_refuse, dr_st_answer
-        .equ    DR_CLIENT, 8
 dr_file_path:                           | (format, out)
         movea.l 4(%sp),%a0
         movea.l 8(%sp),%a1

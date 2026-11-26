@@ -34,7 +34,7 @@ STOCK_CALLS = {'0x400a2d88', '0x4000d3b4', '0x4000f450', '0x4009dcaa',
 
 
 UNIT = c_unit.Unit(HERE, 'drummer_unit.s', SOURCES, asm=ASM, stock_calls=STOCK_CALLS,
-                   remix_inc='.set HAVE_PAGELOCKS, 1\n')   # manifest.py's drummer_inc
+                   remix_inc='.set HAVE_PAGELOCKS, 1\n.set DR_CLIENT, 8\n')   # manifest.py's drummer_inc
 
 if __name__ == '__main__':
     # styles.inc, which drummer.c includes, is styles.py's output: refresh or check it first

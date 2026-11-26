@@ -47,13 +47,15 @@ class Unit:
     the checked-in file; `sources` the C files (one translation unit, in
     this order); `asm` the hand-written .s files, after the C unless
     `asm_first`; `stock_calls` the targets outside the unit it may reach
-    (None: only the library check); `remix_inc` the sample remix.inc."""
+    (None: only the library check); `remix_inc` the sample remix.inc and
+    `defsyms` sample (name, value) pairs for the manifest's Linked.defsyms."""
     here: pathlib.Path
     out: str
     sources: tuple
     asm: tuple = ()
     stock_calls: set = None
     remix_inc: str = ''
+    defsyms: tuple = ()
     asm_first: bool = False
 
     def names(self):
@@ -114,7 +116,8 @@ def assemble(unit, source):
     with tempfile.TemporaryDirectory() as td:
         (pathlib.Path(td) / unit.out).write_text(source)
         (pathlib.Path(td) / 'remix.inc').write_text(unit.remix_inc)
-        r = subprocess.run([compiler(), '-mcpu=5475', '-c', '-x', 'assembler', '-I', td, unit.out, '-o', 'u.o'],
+        defs = [f'-Wa,--defsym,{n}={v}' for n, v in unit.defsyms]
+        r = subprocess.run([compiler(), '-mcpu=5475', '-c', '-x', 'assembler', '-I', td, *defs, unit.out, '-o', 'u.o'],
                            capture_output=True, text=True, cwd=td)
         if r.returncode:
             sys.exit(f'{unit.out} does not assemble for the 5475:\n' + r.stderr)

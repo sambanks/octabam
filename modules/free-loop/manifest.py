@@ -47,6 +47,8 @@ assembled with HK_UI_TICK, jumps to rl_uitick where it replayed stock. MORPH sta
 """
 
 import dataclasses
+import runpy
+from pathlib import Path
 
 from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Evidence, Level, SymbolRef
 
@@ -69,7 +71,9 @@ DRAW_STOCK = H("7003b08c6618")                  # moveq #3,%d0 ; cmpl %a4,%d0 ; 
 KEYS_FIELD = 0x400D164E                       # the [TRACK]-held layer's keys pointer
 KEYS_STOCK = 0x400D1594
 
-_UNIT = Linked("fl", "modules/free-loop/free_loop.s", cpu="5475", dram=True)
+# FL_CLIENT: the module's number in STORE's refusal registry (store/manifest.py CLIENT_IDS).
+_CLIENT = runpy.run_path(str(Path(__file__).parents[1] / "store/manifest.py"))["CLIENT_IDS"]["FREE LOOP"]
+_UNIT = Linked("fl", "modules/free-loop/free_loop.s", cpu="5475", dram=True, defsyms=(("FL_CLIENT", _CLIENT),))
 
 
 def select(modules):
@@ -79,7 +83,7 @@ def select(modules):
     from remix import hooks_flags
     defs = tuple((flag, 1) for bridge, flag in (("rec_gate", "HK_REC_GATE"), ("ui_tick", "HK_UI_TICK"))
                  if hooks_flags.on(bridge, "FREE LOOP", modules))
-    return {"linked": (dataclasses.replace(_UNIT, defsyms=defs),)} if defs else {}
+    return {"linked": (dataclasses.replace(_UNIT, defsyms=_UNIT.defsyms + defs),)} if defs else {}
 
 
 MODULE = Module(

@@ -34,7 +34,8 @@ STOCK_CALLS = {'0x4000e7a4', '0x4009da16', '0x4009d9ae', '0x40056c2e', '0x40006d
                'rl_uitick'}  # RELOAD_FROM_PROJECT's, beside it under HOOKS (HK_UI_TICK}
 
 
-UNIT = c_unit.Unit(HERE, 'free_loop.s', SOURCES, asm=('hooks.s',), stock_calls=STOCK_CALLS)
+UNIT = c_unit.Unit(HERE, 'free_loop.s', SOURCES, asm=('hooks.s',), stock_calls=STOCK_CALLS,
+                   defsyms=(('FL_CLIENT', 5),))   # manifest.py's defsym
 
 if __name__ == '__main__':
     c_unit.main(UNIT)
