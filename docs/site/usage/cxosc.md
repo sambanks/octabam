@@ -4,7 +4,9 @@ operators in FM, a sine wavefolder after them, modulator feedback, and
 sine lean / saw phase-skew / square duty). The **PWM** knob leaves the
 **CAR**/**MOD** icons alone. Timbre from folding and index. Up to **six**
 CX OSC tracks per Part when every track's **MOD** morph is at **0**. With
-nonzero **MOD** morph, use fewer CX OSC tracks; six-track headroom is not safe.
+the morphs, **PWM**, **FDBK**, **INDX**,
+**DEC** and **FOLD** all in use, play at most **four** CX OSC tracks. The Part
+still allows six; the extra tracks overload the unit's audio processor.
 
 Built on Tim Hastie's FM SYNTH engine (local fork). Remixes that ship
 CX OSC omit SYNTH MACHINE (same seat).
