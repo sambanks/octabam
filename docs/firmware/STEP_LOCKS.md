@@ -37,6 +37,15 @@ in the bank blob and the battery-backed copy, sets `DB + 0x9b332` and
 `0x100f8598` (edited), calls `0x40027e00`. The MIDI-track branch is taken
 on `0x80000012`.
 
+The same layer's key rows (`0x400bec0a`, map `0x400bee74`) send the six
+knob pushes, keys `0x38..0x3d`, to `0x4005040c(key, pressed)` on press
+and release. It toggles the lock of slot `key − 0x38 + page·6` on every
+held step: a press on an unlocked slot locks it to the Part's value and
+sets `0x460d1750`; a press on a lock clears `0x460d1750`, and the
+release then writes `0xff`. On a SETUP window that is the page-1 slot
+behind it, as for a turn. It ends as the turn does (the edited marks,
+the trig-tap masks cleared, `0x4004d948(-1)`).
+
 ## 3. Playback
 
 | stage | where |  |

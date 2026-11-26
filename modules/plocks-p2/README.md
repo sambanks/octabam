@@ -7,7 +7,9 @@ unit with module-specific hooks, nothing on the DSP. Requires SCENES P2, STORE a
 
 Open the FX1 or FX2 SETUP page, hold one or more trigs and turn a knob:
 each held step gets that slot's page-2 lock. FUNC held while turning
-removes it. The trig plays the lock and the next trig puts the Part's
+removes it. Pressing a knob with trigs held toggles its lock, as on page 1:
+a press locks an unlocked step to the Part's value, and a press on a lock
+removes it when the knob is let go. The trig plays the lock and the next trig puts the Part's
 value back, as page 1 does.
 
 Holding a trig shows its lock after the same short delay as page 1, with

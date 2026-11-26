@@ -15,13 +15,13 @@ LOCKS_KEY = runpy.run_path(str(Path(__file__).parents[1] / 'pages/manifest.py'))
 FAMILIES = {
     'transport': ('start', 'resume'),
     'midi': ('note_accepted',),
-    'edit': ('held', 'copy_pre', 'scene_held', 'steps'),
+    'edit': ('held', 'copy_pre', 'scene_held', 'steps', 'held_press'),
 }
 CLIENTS = {
     'transport': (('EUCLID', 'eu_seq', ('start', 'resume')),
                   ('MIDI FOLLOW', 'bf_seq', ('start', 'resume'))),
     'midi': (('MIDI FOLLOW', 'bf_seq', ('note_accepted',)),),
-    'edit': (('PLOCKS P2', 'plk_ed', ('held', 'copy_pre')),
+    'edit': (('PLOCKS P2', 'plk_ed', ('held', 'copy_pre', 'held_press')),
              (LOCKS_KEY, 'pg', ('held', 'scene_held', 'copy_pre', 'steps'))),
 }
 
@@ -53,6 +53,7 @@ def registrations(modules):
             for event in handled:
                 suffixes = (('claim', 'handle') if (family, event) == ('edit', 'held')
                             else ('scene_claim', 'scene_handle') if (family, event) == ('edit', 'scene_held')
+                            else ('press_claim', 'press_handle') if (family, event) == ('edit', 'held_press')
                             else (event,))
                 names = tuple(f'{prefix}_{suffix}' for suffix in suffixes)
                 if symbols.intersection(names):
@@ -157,6 +158,11 @@ _STEPS_HOOKS = (
 )
 HOOKS['edit', 'steps'] = _STEPS_HOOKS
 HOOKS['edit', 'held'] = _EDIT_HOOKS[:1]
+# edit.held_press: the trig-held layer's knob push (keys 0x38..0x3d, press and
+# release, 0x400bec0a); stock toggles the page-1 lock of encoder + page*6.
+HOOKS['edit', 'held_press'] = (
+    Detour(0x4005040c, bytes.fromhex('4fefffb448d77cfc'), 'eventsedit', 'ed_held_press',
+           'held-step knob push ownership', pad_to=8),)
 HOOKS['edit', 'scene_held'] = _EDIT_HOOKS[1:3]
 HOOKS['edit', 'copy_pre'] = _EDIT_HOOKS[3:]
 

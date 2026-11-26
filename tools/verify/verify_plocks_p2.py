@@ -371,6 +371,13 @@ def display_walk(image, card, set_name, project, store, out, check):
             x0, y0, x1, y1 = box
             return tuple(v for row in rows[y0:y1] for v in row[x0:x1])
 
+        def push_a(down):
+            # knob A's push switch: row 0x27, bit 0 (tools/panel/key_map.json)
+            m = p.held.get(0x27, 0)
+            p.held[0x27] = m | 1 if down else m & ~1
+            p.proc.command(f"key {0x27:#x} {p.held[0x27]:#x}", "ok")
+            p.run(350)
+
         # SETUP draws names after widgets; the native name's bottom padding
         # clears row 16 (x=62..76). Check that padding with the name, and
         # compare the visible dial/number rows 17..34 with stock rows 10..27.
@@ -501,6 +508,30 @@ def display_walk(image, card, set_name, project, store, out, check):
                   p.peek(block + offset, 1) == b"\xff"
                   and crop(removed, (61, 10, 79, 35)) == crop(refs[21], (61, 10, 79, 35)))
             held("func", False)
+            held("trig1", False)
+            # Knob A's push with the trig held toggles the page-2 lock, as a
+            # push toggles a page-one lock: the press locks to the Part's
+            # value, a press on a lock removes it at the release. Stock
+            # would toggle the page-one slot behind the window (A + page*6).
+            held("trig1", True)
+            push_a(True)
+            pushed = screen(f"{slot}-push-locked")
+            push_a(False)
+            check(f"display {slot}: knob push locks the held step to Part 21",
+                  p.peek(block + offset, 1) == bytes([21])
+                  and crop(pushed, dial) != crop(refs[21], dial))
+            check(f"display {slot}: knob push leaves the page-one slot behind the window",
+                  p.peek(db + 0x59, 32) == b"\xff" * 32)
+            held("trig1", False)
+            held("trig1", True)
+            push_a(True)
+            check(f"display {slot}: knob push on a lock keeps it until the release",
+                  p.peek(block + offset, 1) == bytes([21]))
+            push_a(False)
+            unpushed = screen(f"{slot}-push-removed")
+            check(f"display {slot}: knob push removes lock, highlight and lock value",
+                  p.peek(block + offset, 1) == b"\xff"
+                  and crop(unpushed, (61, 10, 79, 35)) == crop(refs[21], (61, 10, 79, 35)))
             held("trig1", False)
             check(f"display {slot}: page-one lock bytes remain untouched",
                   p.peek(db + 0x59, 32) == b"\xff" * 32)
