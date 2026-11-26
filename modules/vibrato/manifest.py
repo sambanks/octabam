@@ -26,7 +26,7 @@ import pathlib
 
 from remix import stations
 from remix.schema import (BusRole, Category, Claims, DspSection, Formatter, Gate, Harness,
-                          Kind, MenuEntry, Module, Param, Evidence, Level, Store, YBase)
+                          Kind, Linked, MenuEntry, Module, Param, Evidence, Level, Store, YBase)
 
 _spec = importlib.util.spec_from_file_location("vibrato_ref",
                                                pathlib.Path(__file__).with_name("vibrato_ref.py"))
@@ -36,6 +36,7 @@ _spec.loader.exec_module(_ref)
 _PLAIN = Formatter.PLAIN
 _STEP = Formatter.STEPPED
 _BLANK = Param(b"", 0)
+_KN = "vibrato_knob"               # func_stops.s: the knob handlers (P+0x12a)
 
 MODULE = Module(
     name="vibrato",
@@ -57,16 +58,21 @@ MODULE = Module(
     ),
     params=(
         # ---- page 1: the LFO on top, WID and MIX beneath --------------------
-        Param(b"SPD", 80, active=True, formatter=_PLAIN,
+        # FUNC stops: octaves 0.25 .. 8 Hz, 15.5
+        Param(b"SPD", 80, active=True, formatter_word=0, widget_word=0, word_12a=(_KN, "vb_knob_spd"),
               doc="rate, 0.25 to 15.5 Hz, exponential (80 is 3.4 Hz; 21 steps an octave)"),
-        Param(b"DEP", 48, active=True, formatter=_PLAIN,
+        # FUNC stops: 0 1.2 4.9 9.9 25.4 50.2 75 100 cents
+        Param(b"DEP", 48, active=True, formatter_word=0, widget_word=0, word_12a=(_KN, "vb_knob_dep"),
               doc="peak pitch deviation, 100 (k/127)^2 cents: 14 at 48, 25 at 64, 100 at 127"),
-        Param(b"SLEW", 0, active=True, formatter=_PLAIN,
+        # FUNC stops: quarters
+        Param(b"SLEW", 0, active=True, formatter_word=0, widget_word=0, word_12a=(_KN, "vb_knob_slew"),
               doc="rounds the shape: 0 is none, 127 a quarter-cycle time constant"),
-        Param(b"WID", 0, active=True, formatter=_PLAIN,
+        # FUNC stops: every 30 deg
+        Param(b"WID", 0, active=True, formatter_word=0, widget_word=0, word_12a=(_KN, "vb_knob_wid"),
               doc="R's LFO lead, up to half a cycle; on RND, decorrelates R's random pitch"),
         _BLANK,
-        Param(b"MIX", 127, active=True, formatter=_PLAIN,
+        # FUNC stops: quarters
+        Param(b"MIX", 127, active=True, formatter_word=0, widget_word=0, word_12a=(_KN, "vb_knob_mix"),
               doc="dry/wet; 127 is the vibrato alone, 0 is exact passthrough"),
         # ---- page 2: SHP on slot 6, as MODE is on every effect -------------
         Param(b"SHP", 0, 4, active=True, formatter=_STEP,
@@ -93,7 +99,11 @@ MODULE = Module(
     store=Store("octabam.vibrato"),
     settings=(stations.setting(),),
     variant=lambda values: _slots(values),
-    gates=(Gate("tools/verify/verify_vibrato.py", remix_arg=False),),
+    gates=(Gate("tools/verify/verify_vibrato.py", remix_arg=False),
+           # the FUNC-stop handlers under Unicorn: assembled alone, no image
+           Gate("tools/verify/verify_vibrato_knobs.py", remix_arg=False, venv=True)),
+    # ColdFire: FUNC + turn walks per-knob stops (P+0x12a handlers).
+    linked=(Linked(_KN, "modules/vibrato/func_stops.s"),),
     dear={"SPD": 127, "DEP": 127, "SLEW": 127, "WID": 127, "MIX": 127, "SHP": 3},
 )
 
