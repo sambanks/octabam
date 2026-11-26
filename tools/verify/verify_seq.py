@@ -607,6 +607,11 @@ def check_ui(src: str) -> None:
           and "ef_open" in page
           and "PAGE_GO" in page
           and "any PAGE press closes" not in src)
+    check("TRACK+PAGE release closes via ef_close then rts (not PAGE_GO)",
+          "bsr.w   ef_close" in page and "bra.w   8f" in page)
+    close = _block(src, "close_orphan:", "ef_no:")
+    check("close_orphan unlinks stale layer next links then LREBUILD",
+          "ef_unlink_stale" in close and "jsr     LREBUILD" in close)
 
     for code, handler in (
         ("0x31", "ef_yes"),

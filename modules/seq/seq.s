@@ -121,6 +121,9 @@
         .set    SPRINTF,   0x40013a08
         .set    LPUSH,     0x40031494
         .set    LPOP,      0x4003146c
+        .set    KEY_CACHE, 0x46c7d8de   | 64 key records of 24 bytes, layer at +12
+        .set    LAYER_ROOT, 0x460d165c  | top layer record; next links at +0 and +12
+        .set    LREBUILD, 0x4003125c    | refill the key cache from LAYER_ROOT (LPUSH/LPOP end here)
         .set    SCRDIRTY,  0x46c7c72c
         .set    TEMPO24,   0x80001814   | entropy seed (same as RND NAME)
         .set    CLOCKEST,  0x80001818
@@ -288,8 +291,9 @@ ef_page:
         cmpl    8(%sp),%d0
         bne.s   8f                      | press only
         tstl    ef_win
-        bne.w   ef_close                | TRACK+PAGE while open: close
-        bra.w   ef_open
+        beq.w   ef_open                 | release, closed: open
+        bsr.w   ef_close                | release, open: close
+        bra.w   8f
 8:      rts
 9:      lea     -16(%sp),%sp            | displaced prologue
         movem.l %d2-%d4/%a2,(%sp)
@@ -1083,8 +1087,85 @@ close_orphan:
         pea     EF_LAYER
         jsr     LPOP
         addql   #4,%sp
+        | Stale next links after TRACK hold / CUE chord: fix and LREBUILD.
+        lea     EF_LAYER,%a1
+        bsr.w   ef_unlink_stale
+        jsr     LREBUILD
 9:      rts
 
+| A layer stock pushed above ours (TRACK hold under TRACK+PAGE, clear list)
+| can keep a next link at ours after LPOP. Walk layer root and key-cache
+| layer pointers; repoint them like a real unlink. a1 = our layer record.
+| LPOP already refilled cache through stale links; LREBUILD follows.
+        .set    UE_MAX, 64
+ef_unlink_stale:
+        tstl    ef_unlink_busy          | WDESTROY can re-enter close_orphan
+        bne.w   9f
+        moveq   #1,%d0
+        movel   %d0,ef_unlink_busy
+        lea     -20(%sp),%sp
+        movem.l %d2-%d4/%a3-%a4,(%sp)
+        movea.l %a1,%a3
+        lea     ef_unlink_queue,%a4     | not on the key stack (64×4 B)
+        moveq   #0,%d3                  | queued
+        movel   LAYER_ROOT,%d0
+        bsr.s   ue_add
+        movea.l #KEY_CACHE+12,%a1
+        moveq   #64,%d2
+1:      movel   (%a1),%d0
+        bsr.s   ue_add
+        lea     24(%a1),%a1
+        subql   #1,%d2
+        bne.s   1b
+        moveq   #0,%d4                  | visited
+2:      cmpl    %d3,%d4
+        bge.s   9f
+        movel   (%a4,%d4.l*4),%d0
+        movea.l %d0,%a0
+        cmpa.l  (%a0),%a3
+        bne.s   3f
+        movel   (%a3),(%a0)
+3:      cmpa.l  12(%a0),%a3
+        bne.s   4f
+        movel   12(%a3),12(%a0)
+4:      movel   (%a0),%d0
+        movel   12(%a0),%d2
+        bsr.s   ue_add
+        movel   %d2,%d0
+        bsr.s   ue_add
+        addql   #1,%d4
+        bra.s   2b
+9:      movem.l (%sp),%d2-%d4/%a3-%a4
+        lea     20(%sp),%sp
+        clrl    ef_unlink_busy
+        rts
+
+| d0: a layer record to queue unless null, ours, odd, outside RAM, queued,
+| or the queue is full. Uses d1 and a0; keeps a1.
+ue_add:
+        tstl    %d0
+        beq.s   9f
+        cmpa.l  %d0,%a3
+        beq.s   9f
+        btst    #0,%d0
+        bne.s   9f
+        cmpil   #0x40000400,%d0
+        bcs.s   9f
+        cmpil   #0x47f00000-28,%d0
+        bhi.s   9f
+        moveq   #0,%d1
+1:      cmpl    %d3,%d1
+        bge.s   2f
+        cmpl    (%a4,%d1.l*4),%d0
+        beq.s   9f
+        addql   #1,%d1
+        bra.s   1b
+2:      moveq   #UE_MAX,%d1
+        cmpl    %d1,%d3
+        bge.s   9f
+        movel   %d0,(%a4,%d3.l*4)
+        addql   #1,%d3
+9:      rts
 
 ef_no:
         moveq   #1,%d0
@@ -6429,6 +6510,8 @@ ef_pending_cursor: .long 0
 ef_dlg_guard: .long 0                   | 1: soft-close on class-5 eviction
 ef_need_restore: .long 0                | 1: recreate window after dialog
 ef_layer_on: .long 0                    | 1: EF_LAYER registered (LPOP even if ef_win=0)
+ef_unlink_busy: .long 0
+ef_unlink_queue: .space 256
 ef_cl_nolayer: .long 0                  | 1: EF_CL_NO_LAYER pushed over CLEAR
 ef_cl_sel:  .long 0                     | clear LISTPOP cursor
 ef_nowrite: .long 0                     | refused file: do not overwrite
