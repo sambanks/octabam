@@ -35,6 +35,8 @@ import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
+sys.path.insert(0, str(HERE.parents[1] / "tools/verify"))
+import gatekit  # noqa: E402  (tools/verify/gatekit.py: the [PASS]/[FAIL] lines, the runtime map)
 EMU = ROOT / "out/emu/ot_emu"
 OUT = ROOT / "out/drummer/live2"
 PART = 0x40170F60                     # bank 1's Part 1 in RAM (the cards' working Part)
@@ -44,21 +46,12 @@ NX_AT, NMARK = 0x1E6, 0x41            # T1: NEXT's B-F, THRU's SETUP column, the
 PROJ, RIGHT, DOWN = 0x1C, 0x21, 0x20
 PART_LEN = 0x200
 SRC, AMP, FUNC, YES, T1 = 0x22, 0x23, 0x2D, 0x31, 0x10
-FAILS = []
-
-
-def check(name, ok, detail=""):
-    print(f"  [{'PASS' if ok else 'FAIL'}] {name}" + (f" -- {detail}" if detail else ""))
-    if not ok:
-        FAILS.append(name)
+GATE = gatekit.Gate()
+check, FAILS = GATE.check, GATE.fails
 
 
 def symbol(name):
-    for line in (ROOT / "out/platform/runtime/runtime.map").read_text().splitlines():
-        w = line.split()
-        if len(w) == 2 and w[1] == name and w[0].startswith("0x"):
-            return int(w[0], 16)
-    sys.exit(f"verify_live2: {name} not in the runtime map (build the image first)")
+    return gatekit.runtime_symbol(name, "verify_live2", hint=" (build the image first)")
 
 
 def tap(code, gap=0.5, hold=0.06):

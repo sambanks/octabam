@@ -249,7 +249,9 @@ shared check verifies payload placement, not the correctness of mutable values.
 2. **Print a verdict per check** (`[ok]`/`[FAIL]`), a summary line, and
    exit non-zero on any failure. `[SKIP]` only for a missing instrument,
    project or toolchain, naming what to install; `[ -- ]` when the subject
-   is absent from the remix.
+   is absent from the remix. `tools/verify/gatekit.py` writes these lines
+   (`Gate.check`, `skip`, `na`, `exit_code`) and reads a symbol from the
+   runtime map (`runtime_symbol`).
 3. **Pin arithmetic you can predict.** A render gate compares against a
    number derived from the algorithm or a float reference, never against
    "it sounds right". Prove the gate can fail: a positive control that
