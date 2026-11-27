@@ -1973,3 +1973,34 @@ routine into use, list every stock reference into its buffers' neighbourhood
 (the 4 KB pages and the bases near them) and find what else uses that
 memory, and when. Fix: USB MIDI is paused while the medium is the host's.
 **Gate:** `verify_usb_midi_disk`.
+
+<a id="trap-pickup-trig"></a>
+
+### A Pickup on TRIG ONE records a new take on every REC1 and never plays
+
+**A PICKUP MACHINE PLAYS ITS TAKE ONLY WHEN THE TRACK'S RECORDING SETUP
+TRIG IS ONE2 (OR REC2 STARTS IT).** Under the port, a Pickup recorded but its
+voice never became active: the renderer `0x40007960` never ran and MAIN was
+silent. The Pickup state machine `0x400977cc(track, action)` takes its action
+from `0x40097924`, which reads TRIG (setup byte 3). Its state comes from the
+voice record `0x800049d8 + 168 t` (`0x40097168`: +0 playing, +1 recording,
++2 a third flag). While recording, REC1 with ONE is action 2 and posts `0x7010`
+again: a new take. With ONE2 it is action 3: `0xf010`, then the play trig
+`0x11d` (`0x40005030`), whose bind sets +0. REC2 is action 1, play or stop. A
+fresh project has TRIG ONE. Fix: a Pickup fixture sets TRIG ONE2 and ends its
+take with REC1, or plays it with REC2.
+**Gate:** `tools/verify/probe_pickup_port.py` exits 1 unless T1's voice plays
+the Pickup and MAIN carries it.
+
+<a id="trap-live-script-level"></a>
+
+### A `--live-script` run posts no main level, so every voice is silent
+
+**`--main-level` IS POSTED BY `--sequencer`, `--live` AND `--interactive`
+RUNS, NOT BY A `--live-script` RUN.** Without SET MAIN LEVEL the gain table
+`0x80003c60` stays zero: a Pickup's voice played, the renderer ran, and TX0
+was zero on every ring word, the input monitor included. Fix: the script turns
+the volume knob (`<ms> pot <0..255>`), which posts the same command, before
+anything plays. Check `TX0 non-zero per RING WORD` in the port's report before
+reading a silent `--audio-out`.
+**Gate:** `tools/verify/probe_pickup_port.py` requires MAIN to carry the loop.

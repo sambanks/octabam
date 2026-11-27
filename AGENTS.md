@@ -268,6 +268,10 @@ moment it costs real work, and add its line here.
 
 - [PLAYBACK slot A depends on the machine](docs/contributing/TRAPS.md#trap-pitch-destination): THRU has INAB where FLEX has PTCH; resolve the parameter before offering pitch controls.
 
+- [A Pickup on TRIG ONE records a new take on every REC1 and never plays](docs/contributing/TRAPS.md#trap-pickup-trig) — set RECORDING SETUP TRIG to ONE2, or play it with REC2; `probe_pickup_port.py` is the fixture.
+
+- [A `--live-script` run posts no main level, so every voice is silent](docs/contributing/TRAPS.md#trap-live-script-level) — turn the volume knob in the script (`<ms> pot 200`) before anything plays.
+
 ## How docs are written here
 
 Nothing reaches `main` without CI's full gates, so a doc never has to prove
