@@ -32,6 +32,10 @@ from remix.schema import render_slot
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 HOST = ROOT / "vendor/dsp56300/build/source/dsp_host/dsp_host"
+# A remix with a hook at the per-track source seam (OCTA303 SEAM, A P:0x39c / B P:0x1a2) has a jsr where dsp_host
+# looks for the frame setup's last word (`move a,x:>$20e`), so it cannot find it: stop the setup just before the
+# seam, as tools/harness/verify_analog_bd_reverbs.py does (this gate calls the effects directly).  Set in main().
+SEAM_CTX = []
 FRAMES, BLOCKS, TAIL = 15, 100, 300
 FLOOR_DB = -100.0
 FILLS = (0x7fffff, 0x800000, 0x400000, 0x5a5a5a)
@@ -54,6 +58,7 @@ def render(mem: pathlib.Path, init: int, proc: int, params, tmp: pathlib.Path, s
     cmd = [str(HOST), "-mem", str(mem), "-init", f"{init:x}", "-proc", f"{proc:x}", "-inst", "1", "-r7", str(slot[0]),
            "-alloc", str(slot[1]), "-inmask", "1", "-stereo", "-frames", str(FRAMES), "-blocks", str(BLOCKS),
            "-in", str(src), "-out", str(out), "-params", ",".join(str(x) for x in params)]
+    cmd += SEAM_CTX
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode:
         return None, (r.stdout + r.stderr)[-400:]
@@ -91,6 +96,11 @@ def main():
         if r.returncode:
             sys.exit(f"verify_dirty_state: building {remix.name} failed:\n{(r.stdout + r.stderr)[-1500:]}")
         a.image = str(ROOT / "out/mainos_bus.bin")
+    seam = any(hasattr(h.site, "get") and h.site.get("A") == 0x39C for m in mods.values()
+               for h in (getattr(getattr(m, "dsp", None), "hooks", None) or ()))
+    if seam:
+        SEAM_CTX[:] = ["-ctx", "372,39b,53e", "-ctxB", "17a,1a1,333"]
+        print("the source seam carries a hook: dsp_host's frame setup stops before it (-ctx 372,39b,53e / -ctxB 17a,1a1,333)")
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="dirtystate_"))
     mems = {pl: send_probe.dump_mem(a.image, tmp / f"payload_{pl}.mem", pl) for pl in "AB"}
     send_id = registry.by_name("send").menu.fx2_id

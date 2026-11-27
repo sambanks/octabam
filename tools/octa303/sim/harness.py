@@ -32,19 +32,22 @@ def hooks_flags():
     return next(ast.literal_eval(n.value) for n in tree.body if isinstance(n, ast.Assign)
                 and any(getattr(t, 'id', None) == 'FLAGS' for t in n.targets)).values()
 
-def remix_inc(devilish=True):
+def remix_inc(devilish=True, seam=False):
     """What the build writes as remix.inc (modules/octa303/manifest.py remix_inc): OCTA303
-    alone, so every HOOKS flag 0 (its own bytes)."""
+    alone, so every HOOKS flag 0 (its own bytes); O3_SEAM 1 with OCTA303 SEAM (the hybrid)."""
     return ('        .set    DEVIL_ID, 0x%x\n' % (DEVIL_ID if devilish else 0x100)
+            + '        .set    O3_SEAM, %d\n' % (1 if seam else 0)
             + ''.join('        .set    %s, 0\n' % f for f in hooks_flags()))
 
-def _unflag(s):
+def _unflag(s, seam=False):
     """The .if / .else / .endif blocks on a HOOKS flag resolved as OCTA303 alone builds them (every
-    flag 0): cfsim has no conditional assembly."""
+    flag 0), and on O3_SEAM as asked: cfsim has no conditional assembly."""
     flags, out, keep = set(hooks_flags()), [], [True]
     for line in s.split('\n'):
         tok = line.split('|')[0].split()
         if tok[:1] == ['.if']:
+            if tok[1:] == ['O3_SEAM']:
+                keep.append(bool(seam)); continue
             if tok[1:] and tok[1] not in flags and all(keep):    # nested in a dropped block: any symbol
                 raise ValueError('cfsim harness: .if on ' + ' '.join(tok[1:]) + ', not a HOOKS flag')
             keep.append(False)
@@ -56,10 +59,10 @@ def _unflag(s):
             out.append(line)
     return '\n'.join(out)
 
-def source(devilish=True):
+def source(devilish=True, seam=False):
     s = open(SRC_PATH).read()
     assert s.count('.include "remix.inc"') == 1
-    return _unflag(s.replace('        .include "remix.inc"', remix_inc(devilish).rstrip('\n'), 1))
+    return _unflag(s.replace('        .include "remix.inc"', remix_inc(devilish, seam).rstrip('\n'), 1), seam)
 
 class Rig:
     def __init__(self, src=None):
@@ -83,7 +86,8 @@ class Rig:
         return [self.cpu.mem.r(VOICE_BASE + VSTR * track + 64 + 4 * i, 'l') for i in range(5)]
     def _stock(self, cpu):
         m = cpu.mem
-        args = [m.r(cpu.a[7] + 4 * i, 'l') for i in range(4)]
+        sp = cpu.a[7] + (4 if cpu.via_jmp else 0)    # o3_render's fast path enters by jmp
+        args = [m.r(sp + 4 * i, 'l') for i in range(4)]
         words = [m.r(FRAME + 2 * i, 'w') for i in range(6)]
         self.seen.append((args, words))
         t, n = args[0], args[3] - args[2]
@@ -105,7 +109,8 @@ class Rig:
         """v6.5: the gate's inputs, seq = (hold, step, tick, slides, length) -- slides split between the
         trigless-trig mask (+8) and the trigless-lock mask (+16); a trig mask (+0) the gate must ignore."""
         m = self.cpu.mem
-        hold, step, tick, slides, L = seq
+        hold, step, tick, slides, L = seq[:5]
+        m.w(0x800065b8, 'l', seq[5] if len(seq) > 5 else 1)     # v7.4: the transport word
         m.w(CURVALS + CVSTR * track + 13, 'b', hold)
         m.w(STEPW, 'w', step); m.w(TICKB, 'b', tick)
         m.w(BANKP, 'l', BANK); m.w(PATB, 'b', PATNO)
@@ -138,17 +143,22 @@ class Rig:
         for i, w in enumerate(words): m.w(FRAME + 2 * i, 'w', w)
         m.w(NIBBLE + track, 'b', 0x10 if startbit else 0)
         m.w(CUR, 'l', 0xABCDEF00)
+        m.w(CURSOR, 'l', CUR)                        # v8.6: each call's header at CUR (the skip advances CURSOR, as stock)
         self.feed = feed
         self.cpu.a[7] = STACK
         for v in reversed([track, 0x800000e4, start, end]): self.cpu.a[7] -= 4; m.w(self.cpu.a[7], 'l', v)
         sp0 = self.cpu.a[7]
+        n_seen = len(self.seen)
         for r in range(8): self.cpu.d[r] = 0x11110000 + r
         for r in range(7): self.cpu.a[r] = 0x22220000 + r
         self.cpu.call('sy_render')
         assert self.cpu.a[7] == sp0, 'stack not balanced'
         for r in range(2, 8): assert self.cpu.d[r] == 0x11110000 + r, 'd%d not preserved' % r
         for r in range(2, 7): assert self.cpu.a[r] == 0x22220000 + r, 'a%d not preserved' % r
-        assert self.cpu.d[0] == 0xC0DE0000 + track, 'stock return value not handed back'
+        # v8.6: a latched OCTA303 track skips the stock call (CX OSC's way) and returns 0, as CX OSC's
+        # sy_call; the frame loop discards the value (0x4000d52c: d0 is overwritten at once)
+        self.stock_called = len(self.seen) > n_seen
+        assert self.cpu.d[0] == (0xC0DE0000 + track if self.stock_called else 0), 'stock return value not handed back'
         n = end - start
         return [m.r(CUR + 16 + 8 * i, 'l') for i in range(n)], [m.r(CUR + 20 + 8 * i, 'l') for i in range(n)]
 

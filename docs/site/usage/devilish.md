@@ -9,11 +9,11 @@ Select an OCTA-303 track, press FX1 or FX2, and choose dEVILish from the effect 
 | Page | Knob | What it does |
 |---|---|---|
 | 1 | OVDR | Overdrive: VCO level into the filter (25 matches a stock TB-303) |
-| 1 | FM | Filter FM from the VCA output |
+| 1 | FM | Filter FM from the VCA output, smoothed a little: high FM stays wild, without the static |
 | 1 | TRCK | Filter key tracking |
 | 1 | VDEC | Volume decay, up to endless sustain |
 | 1 | SLID | Slide time (60–360 ms) |
-| 1 | ADEC | Filter decay for accented notes (30 ms–3 s) |
+| 1 | ADEC | Filter decay for accented notes (30 ms–3 s; 50 = the 303's own, 200 ms; continuous, no jump across 50; the tail below ~1 % is extrapolated) |
 | 2 | SATK | Soft attack on non-accented notes |
 | 2 | SWP | Resonance sweep mode: ACID (stock 303), WHST, or SELF (allows self-oscillation) |
 | 2 | SPD | Accent sweep speed: FAST, NORM, or SLOW |

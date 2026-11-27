@@ -9,7 +9,11 @@
    back; PTCH/RATE = 0x4000/0x7f00 for the stock call on the frame's last call of a 303 track,
    restored after; the carrier's positions pinned; the retrig count cleared at a 303 START;
    ordinary samples, first calls of other tracks and dead voices untouched;
-5. o3_retrig and o3_page / o3_pgdesc executed against their stock contexts.
+5. o3_retrig and o3_page / o3_mdesc executed against their stock contexts.
+v7.9: the TB303* sample way in is gone.  The scripts below still name their carrier by a TB303* file
+(the v6.x vocabulary): run() plays such a frame on the TB-303 machine, SETUP WAVE = that carrier and the
+rest SETUP_NEUTRAL (what the sample's track played), and a TB303* sample on a FLEX track is checked to
+be the stock renderer's (tb303_sample_*).
 """
 import os, sys, random, subprocess
 FULL = os.environ.get("OCTA303_FULL") == "1"     # the gate runs the quick set; FULL=1 the whole one
@@ -28,6 +32,16 @@ except Exception as e:
     check('coldfire_lint', False, str(e)); sys.exit(1)
 
 NAMES = {'saw': 'TB303.WAV', 'square': 'TB303SQ.WAV', 'saw_dist': 'TB303D.WAV', 'square_dist': 'tb303sqd.wav'}
+def name_code(name):
+    """The v6.x carrier names (the scripts' vocabulary, v7.9: no longer the engine's): (dist << 1) | wave, -1."""
+    n = name.upper()
+    if not n.startswith('TB303'): return -1
+    n = n[5:]; w = 1 if n.startswith('SQ') else 0
+    if w: n = n[2:]
+    return w | (2 if n.startswith('D') else 0)
+def SU(code):
+    """The machine's SETUP that plays what a TB303* sample's track played (v6.9's SETUP_NEUTRAL, WAVE = code)."""
+    return (code,) + tuple(T.SETUP_NEUTRAL[1:])
 def W(tune=0, cut=64, res=64, env=64, dec=64, acc=0):
     return [0x4000 + tune * 256, cut << 8, res << 8, env << 8, dec << 8, acc << 8]
 
@@ -42,14 +56,15 @@ def run(script, track=0, rig=None):
         su = fr[8] if len(fr) > 8 else None                           # v7.0: the TB-303 machine's SETUP bytes
         sslot = 3 + (f % 2)                                          # the sample's FLEX slot
         rig.path(sslot, '/AUDIO/ACID/' + fname); rig.voice(track, alive, sslot)
-        if su is not None: rig.machine(track, su)
+        if su is None and name_code(fname) >= 0: su = SU(name_code(fname))   # v7.9: the carrier, on the machine
+        rig.machine(track, su if su is not None else T.SETUP_NEUTRAL, sign=su is not None)
         calls = [(0, 16)] if not start_at else [(0, start_at), (start_at, 16)]
         for (a, b) in calls:
             last = b == 16
             L, Rr = rig.call(track, w, a, b, start_at is not None, SILENCE, df, fxslot, sq)
             if L != Rr: return A, B, 'L != R'
-            code = T.name_code(fname) if (last and start_at is not None) else None
-            if su is not None and code is not None: code = min(su[0], 3)         # the machine: SETUP's WAVE
+            code = name_code(fname) if (last and start_at is not None) else None
+            if su is not None and code is not None: code = min(su[0], 7)         # the machine: SETUP's WAVE (v7.9: 8 values)
             ref = R.render_call(st, w, last and start_at is not None, -1 if code is None else code, b - a,
                                alive or su is not None, rdf if fxslot in (1, 2) else None, last=last, seq=sq,
                                setup=su)
@@ -90,7 +105,7 @@ dfx = []
 EXT = ((0,) * 12, (127,) * 12, (127, 127, 127, 127, 127, 0, 127, 1, 0, 2, 1, 1),
        (0, 127, 127, 0, 127, 127, 0, 2, 2, 1, 0, 1), (127, 127, 0, 127, 0, 50, 64, 0, 1, 0, 0, 0),
        (100, 127, 0, 96, 127, 50, 0, 1, 1, 0, 0, 0), T.DF_NEUTRAL)
-for fn in ('TB303.WAV', 'TB303D.WAV'):
+for fn in ('TB303.WAV', 'TB303D.WAV', 'TB303SQ.WAV', 'tb303sqd.wav'):   # v7.6 (review): the square into the OTA too
     for df in EXT:
         for slot in (1, 2):
             sc = [(W(12, 0, 127, 127, 0, 127), 0, fn, True, df, slot)] + [(W(12, 0, 127, 127, 0, 127), None, fn, True, df, slot)] * (40 if FULL else 12)
@@ -124,13 +139,13 @@ _HW = ((0x7f00, 0x0000, 0x40fe, 0x22fe, 0x7fff, 0x0080),            # an LFO's d
        (0x8000, 0xff00, 0x7f00, 0x0000, 0x4000, 0x4000))             # below the floor: 0
 _ok = [_vr(fx, hw, ping) for fx in (1, 2) for hw in _HW for ping in (0, 1)]
 check('devilish_vrec_bit_exact', all(_ok), '%d/%d' % (sum(_ok), len(_ok)))
-rig = Rig(); rig.path(3, '/AUDIO/ACID/TB303.WAV'); rig.voice(0, True, 3); _l = []; st = R.Track()
+rig = Rig(); rig.path(3, '/AUDIO/ACID/TB303.WAV'); rig.voice(0, True, 3); rig.machine(0, SU(0)); _l = []; st = R.Track()
 for f in range(24):                                                # an LFO moving FM under a held note
     hw = (25 << 8, ((f * 11) % 128) << 8 | (f * 37) & 0xFF, 0, 64 << 8, 0, 50 << 8)
     rig.vrec(0, 2, hw, f % 2)
     exp = tuple(h >> 8 for h in hw) + _lane[6:]
     L, Rr = rig.call(0, W(0, 60, 100, 90, 50, 0), 0, 16, f == 0, SILENCE, _lane, 2)
-    ref = R.render_call(st, W(0, 60, 100, 90, 50, 0), f == 0, T.name_code('TB303.WAV') if f == 0 else -1, 16, True, exp, last=True)
+    ref = R.render_call(st, W(0, 60, 100, 90, 50, 0), f == 0, 0 if f == 0 else -1, 16, True, exp, last=True, setup=SU(0))
     _l.append(L == ref)
 check('devilish_lfo_moving', all(_l), '%d/%d' % (sum(_l), len(_l)))
 
@@ -147,6 +162,51 @@ for k in range(8):
     sc += [(W(k, 90, 100, 80, 30, 127 * (k & 1)), 0, fn, True)] + [(W(k + 3, 90, 100, 80, 30, 0), None, fn, True)] * 30
 A, B, mm = run(sc); check('bit_exact_carrier_switch', mm is None)
 
+# v7.3 (#1011): the ladder clip eased at the top of the table (ACID only), with and without dEVILish's
+# per-sample FM; WHST keeps the plain clip; ACCV 127 on open accented notes through the wider VCA.
+_top = []; _seen = {'clg': 0}
+_DFM = (25, 90, 0, 64, 0, 50, 0, 0, 1, 0, 0, 0)                  # FM up, ACID
+_DWH = (25, 0, 0, 64, 0, 50, 0, 1, 1, 0, 1, 1)                   # WHST, CUTX, ENVX
+for df, su, v in ((None, (0, 0, 64, 0, 0, 64), (127, 127, 120, 64, 0)), (None, (0, 0, 64, 0, 0, 64), (127, 127, 104, 64, 127)),
+                  (_DFM, None, (112, 120, 127, 64, 90)), (_DWH, None, (127, 127, 127, 64, 127)),
+                  (None, (0, 0, 64, 0, 0, 127), (80, 0, 127, 64, 127)), (None, (1, 0, 64, 0, 127, 127), (127, 0, 127, 64, 127)),
+                  # v8.3 (review): OVDR 127 + FM 127 + MUFF HARD at the top, the case that uses most of l1's headroom
+                  ((127, 127, 0, 64, 0, 50, 0, 0, 1, 2, 0, 0), None, (110, 127, 127, 64, 127))):
+    n = 90 if FULL else 45
+    fn = 'KICK.WAV' if su else 'TB303.WAV'                       # the machine (SETUP), or the TB303.WAV carrier (run(): SU(0)) + dEVILish
+    fr = lambda tune, at: (W(tune, *v), at, fn, True, df, 1, None, df, su)        # rdf: the 303 hears dEVILish too
+    sc = [fr(0, 0)] + [fr(0, None)] * n + [fr(-12, 3)] + [fr(-12, None)] * n
+    _orig = R.clset
+    def _spy(st, i, _o=_orig):
+        _o(st, i); _seen['clg'] += st.clg > 0
+    R.clset = _spy
+    A, B, mm = run(sc); _top.append(mm is None)
+    R.clset = _orig
+check('bit_exact_v73_top_clip_accv', all(_top) and _seen['clg'] > 0,
+      '%d/%d, clip eased in %d control steps' % (sum(_top), len(_top), _seen['clg']))
+# v7.5 (review): dEVILish SPD SLOW with ACC 127 and accents in a row: the capacitor read doubled climbed past 2^31
+# in the asm (wrapped) where the model's Python integers did not; now held under 2^30 in both
+_sl = [(W(0, 64, 64, 64, 64, 127), 0 if f % 50 == 0 else None, 'TB303.WAV', True, (25, 0, 0, 64, 0, 127, 0, 0, 2, 0, 0, 0), 1)
+       for f in range(600)]
+_A, _B, _mm = run(_sl)
+check('bit_exact_v75_slow_accent_run', _mm is None, 'SPD SLOW, ACC 127, an accent every 50 frames, 600 frames')
+# v7.6: Q8's square through its tables: a slide over four octaves (every semitone's row, the edge's polyBLEP),
+# accented, with dEVILish's OVDR up (the VCA's OTA in its curve) and plain
+_sw = []
+for f in range(420):
+    tune = -24 + (f * 48) // 420
+    _sw.append((W(tune, 90, 100, 100, 50, 127), 0 if f == 0 else None, 'TB303SQ.WAV', True, (110, 0, 0, 64, 0, 64, 0, 0, 1, 0, 0, 0) if f >= 210 else None, 1))
+_A, _B, _mm = run(_sw)
+check('bit_exact_v76_square_sweep_ota', _mm is None, 'SQR slid C1..C5, ACC 127, OVDR 110 on the second half, 420 frames')
+# v7.6 (review): the edge rows (the pitch's clamps, rows 28 and 100) and a square after a saw (the edge lowpass's state
+# left from the last square, at the lowest row, against a new note's first sample: the step is clamped)
+_ed = [(W(-36, 60, 110, 100, 40, 127), 0 if f == 0 else None, 'TB303SQ.WAV', True) for f in range(60)]
+_ed += [(W(-36, 60, 110, 100, 40, 0), 0 if f == 0 else None, 'TB303.WAV', True) for f in range(30)]
+_ed += [(W(-36, 127, 0, 127, 40, 127), 0 if f == 0 else None, 'TB303SQ.WAV', True) for f in range(40)]
+_ed += [(W(36, 127, 127, 127, 40, 127), 0 if f == 0 else None, 'TB303SQ.WAV', True) for f in range(60)]
+_A, _B, _mm = run(_ed)
+check('bit_exact_v76_square_edge_rows', _mm is None, 'SQR at the pitch clamps, saw between, 190 frames')
+
 # ---------------------------------------------------------------- integration
 rig = Rig(); feed = sample_feed(1)
 rig.path(2, '/AUDIO/KICK.WAV'); rig.voice(1, True, 2); rig.seen.clear()
@@ -156,43 +216,62 @@ check('ordinary_sample_untouched', L == [feed(i) for i in range(16)])
 check('args_repushed_return_handed_back', args == [1, 0x800000e4, 0, 16])
 check('ordinary_sample_record_untouched', words == W(5))
 
-rig = Rig(); rig.path(4, '/AUDIO/TB303.WAV'); rig.voice(2, True, 4)
+rig = Rig(); rig.path(4, '/AUDIO/TB303.WAV'); rig.voice(2, True, 4); rig.machine(2, SU(0))
 rig.cpu.mem.w(RS + 4, 'l', 7)
 pos0 = rig.positions(2); w = W(5, 90, 100); rig.seen.clear()
 rig.call(2, w, 0, 16, True, SILENCE)
+# v8.7: the last call of a START frame still runs the stock renderer, neutralised (vFable's hybrid)
+m = rig.cpu.mem
 _, words_seen = rig.seen[-1]
+check('start_frame_keeps_the_stock_call', rig.stock_called)
 check('neutral_ptch_rate_for_the_stock_call', words_seen[0] == 0x4000 and words_seen[3] == 0x7f00, '%04x %04x' % (words_seen[0], words_seen[3]))
 check('ptch_rate_restored_after', [rig.cpu.mem.r(FRAME + 2 * i, 'w') for i in range(6)] == w)
 check('carrier_positions_pinned', rig.positions(2) == pos0)
 check('retrig_count_cleared_at_303_start', rig.cpu.mem.r(RS + 4, 'l') == 0)
+rig.seen.clear()
+rig.call(2, w, 0, 16, False, SILENCE)
+# v8.6/v8.7: a latched track's call without a START skips the stock renderer (CX OSC's sy_call): the header
+# is what stock writes (count, start, rate 1.0, the ring word) and CURSOR moves past the 16 pairs
+check('no_stock_call_without_start', not rig.seen and not rig.stock_called)
+check('header_as_stock_writes_it', [m.r(CUR + 4 * i, 'l') for i in range(4)] == [16, 0, 0x04000000, 0]
+      and m.r(CURSOR, 'l') == CUR + 16 + 8 * 16, '%08x %08x' % (m.r(CUR, 'l'), m.r(CURSOR, 'l')))
+check('skip_record_untouched', [m.r(FRAME + 2 * i, 'w') for i in range(6)] == w and rig.positions(2) == pos0)
 rig.cpu.mem.w(RS + 4, 'l', 7)
-rig.call(2, w, 0, 5, True, SILENCE)                       # a first call: nothing neutralised
-_, words_first = rig.seen[-1]
-check('first_call_not_neutralised', words_first == w)
+rig.call(2, w, 0, 5, True, SILENCE)                       # a first call: nothing neutralised, no stock call
+check('first_call_no_stock_call', not rig.stock_called and m.r(CUR, 'l') == 5 and m.r(CUR + 4, 'l') == 0
+      and m.r(CURSOR, 'l') == CUR + 16 + 8 * 5)
+check('first_call_record_untouched', [m.r(FRAME + 2 * i, 'w') for i in range(6)] == w)
+rig.call(2, w, 5, 16, False, SILENCE)                     # its second call: the ring word from start 5
+check('second_call_header', [m.r(CUR + 4 * i, 'l') for i in range(4)] == [11, 5, 0x04000000, (5 << 26) & 0xFFFFFFFF])
 check('retrig_count_kept_without_start', rig.cpu.mem.r(RS + 4, 'l') == 7)
 
-rig = Rig(); rig.path(4, '/AUDIO/TB303.WAV'); rig.voice(3, True, 4)
-rig.call(3, W(), 0, 16, True, SILENCE)
-rig.voice(3, False, 4); feed = sample_feed(5)
-L, _ = rig.call(3, W(), 0, 16, False, feed)
-check('dead_voice_left_to_stock', L == [feed(i) for i in range(16)])
+# v7.9: a TB303* sample on a plain FLEX track is a sample: the stock renderer's, byte for byte
+for fn in NAMES.values():
+    rig = Rig(); rig.path(4, '/AUDIO/ACID/' + fn); rig.voice(3, True, 4); feed = sample_feed(6)
+    rig.cpu.mem.w(RS + 4, 'l', 7); pos0 = rig.positions(3); w = W(5, 90, 100); rig.seen.clear()
+    L, Rr = rig.call(3, w, 0, 16, True, feed)
+    _, words = rig.seen[-1]
+    L2, _ = rig.call(3, w, 0, 16, False, feed)
+    check('tb303_sample_is_stock_' + fn.split('.')[0].lower(), L == [feed(i) for i in range(16)] and Rr == L and L2 == L
+          and words == w and rig.cpu.mem.r(RS + 4, 'l') == 7 and rig.positions(3) != pos0,
+          'samples, record, retrig count and positions as stock leaves them')
 
 rig = Rig(); rig.path(4, '/AUDIO/TB303.WAV'); rig.path(6, '/AUDIO/LOOP.WAV')
-rig.voice(0, True, 4); rig.call(0, W(), 0, 16, True, SILENCE)
-rig.voice(0, True, 6); feed = sample_feed(8)
+rig.voice(0, True, 4); rig.machine(0, SU(0)); rig.call(0, W(), 0, 16, True, SILENCE)
+rig.machine(0, T.SETUP_NEUTRAL, sign=False); rig.voice(0, True, 6); feed = sample_feed(8)
 L, _ = rig.call(0, W(), 0, 16, True, feed)
 L2, _ = rig.call(0, W(), 0, 16, False, feed)
-check('slot_lock_back_to_a_sample_releases', L == [feed(i) for i in range(16)] and L2 == L)
+check('machine_taken_away_releases_at_the_next_start', L == [feed(i) for i in range(16)] and L2 == L)
 
 rig = Rig(); rig.voice(4, True, None); feed = sample_feed(2)
 L, _ = rig.call(4, W(), 0, 16, True, feed)
 check('null_settings_pointer_ignored', L == [feed(i) for i in range(16)])
 
 rig = Rig(); feed = sample_feed(3); ok = True; st = R.Track()
-rig.path(4, '/AUDIO/TB303.WAV'); rig.path(5, '/AUDIO/HATS.WAV')
+rig.path(4, '/AUDIO/TB303.WAV'); rig.path(5, '/AUDIO/HATS.WAV'); rig.machine(0, SU(0))
 for f in range(30):
     rig.voice(0, True, 4); L, _ = rig.call(0, W(3, 80, 90), 0, 16, f == 0, SILENCE)
-    ref = R.render_call(st, W(3, 80, 90), f == 0, 0, 16)
+    ref = R.render_call(st, W(3, 80, 90), f == 0, 0, 16, setup=SU(0))
     rig.voice(7, True, 5); L2, _ = rig.call(7, W(), 0, 16, f % 4 == 0, feed)
     ok &= (L == ref) and (L2 == [feed(i) for i in range(16)])
 check('tracks_independent', ok)
@@ -200,11 +279,11 @@ check('tracks_independent', ok)
 def level(fn, acc):
     st = R.Track(); out = []
     for f in range(320):
-        r = R.render_call(st, W(0, 70, 100, 90, 60, acc), f == 0, T.name_code(fn), 16); out += [R.s32(x) >> 16 for x in r]
+        r = R.render_call(st, W(0, 70, 100, 90, 60, acc), f == 0, name_code(fn), 16); out += [R.s32(x) >> 16 for x in r]
     return max(abs(x) for x in out), (sum(x * x for x in out) / len(out)) ** .5
 for nm, fn in NAMES.items():
     pk, rms = level(fn, 0); pka, rmsa = level(fn, 127)
-    check('audible_bounded_' + nm, 1000 < rms and pk < 32767, 'peak %d rms %.0f' % (pk, rms))
+    check('audible_bounded_' + nm, 800 < rms and pk < 32767, 'peak %d rms %.0f' % (pk, rms))   # v7.6: 800 (the refit: saw and square both ~0.6 dB under v7.5 here; the OTA ~0.1-0.2 dB of it)
     if 'dist' not in nm: check('accent_louder_' + nm, rmsa > rms * 1.05, 'rms %.0f -> %.0f' % (rms, rmsa))
 
 # ---------------------------------------------------------------- o3_retrig (detour 0x4000c634)
@@ -212,7 +291,7 @@ CMD = 0x46104d15
 def retrig(track, byte, latched):
     rig = Rig(); c = rig.cpu; m = c.mem
     if latched:
-        rig.path(4, '/AUDIO/TB303.WAV'); rig.voice(track, True, 4); rig.call(track, W(), 0, 16, True, SILENCE)
+        rig.path(4, '/AUDIO/TB303.WAV'); rig.voice(track, True, 4); rig.machine(track, SU(0)); rig.call(track, W(), 0, 16, True, SILENCE)
     m.w(CMD + track, 'b', byte)
     c.a[7] = STACK; m.w(STACK - 4 + 114, 'l', track)   # the detour is a jmp: cfsim's call() pushes a return address first
     c.a[0] = CMD; c.d[1] = 0x5151; c.a[2] = 0x6262; c.d[0] = 0
@@ -228,7 +307,7 @@ check('retrig_other_track_untouched', b == 0x15 and d0 == 0x15)
 b, d0, *_ = retrig(3, 0x02, True)
 check('retrig_non_start_untouched', b == 0x02 and d0 == 0x02)
 
-# ---------------------------------------------------------------- o3_page (detour 0x40031ece) + o3_pgdesc
+# ---------------------------------------------------------------- o3_page (detour 0x40031ece); v7.9: no TB303* clone
 FLEX_P, TABLE, BANK = 0x400d31ae, 0x400d5f38, 0x41000000
 def page(path, track=2, part=1, machine=1, slot=5, tblval=FLEX_P):
     rig = Rig(); c = rig.cpu; m = c.mem
@@ -244,60 +323,21 @@ def page(path, track=2, part=1, machine=1, slot=5, tblval=FLEX_P):
     c.call('o3_page')
     kept = all(c.d[r] == 0x7777 + r for r in (6, 7)) and all(c.a[r] == 0x6600 + r for r in range(2, 7)) and c.a[7] == STACK
     return c, c.d[0], kept and bool(done)
-c, d0, kept = page('/AUDIO/ACID/TB303.WAV')
-desc = c.consts['o3_desc']
-check('page_tb303_gets_clone', d0 == desc and kept)
-clone = bytes(c.mem.r(desc + i, 'b') for i in range(0x192)); stock = bytes((i * 7 + 3) & 0xFF for i in range(0x192))
-exp = bytearray(stock); exp[0x9:0x12] = b'OCTA-303\0'
-exp[0x16:0x3a] = b'TUNE\0\0CUT\0\0\0RES\0\0\0ENV\0\0\0DEC\0\0\0ACC\0\0\0'; exp[0x5f:0x64] = bytes([64, 64, 64, 64, 0])
-for k in range(5): exp[0xce + 4 * k:0xd2 + 4 * k] = (0x4003c178).to_bytes(4, 'big')
-exp[0xca:0xce] = c.consts['o3_fmt_tune'].to_bytes(4, 'big')            # v6.4: TUNE in semitones
-exp[0x6a:0x6e] = (64 + T.TUNE_LO).to_bytes(4, 'big'); exp[0x9a:0x9e] = (T.TUNE_HI - T.TUNE_LO + 1).to_bytes(4, 'big')
-exp[0x12a:0x12e] = bytes(4)
-check('page_clone_fields', clone == bytes(exp), 'diff at %s' % [hex(i) for i in range(0x192) if clone[i] != exp[i]][:6])
-check('page_stock_record_untouched', bytes(c.mem.r(FLEX_P + i, 'b') for i in range(0x192)) == stock)
-check('page_tune_three_octaves', clone[0x16:0x1c] == b'TUNE\0\0' and clone[0x5e] == stock[0x5e]
-      and int.from_bytes(clone[0x6a:0x6e], 'big') == 40 and int.from_bytes(clone[0x9a:0x9e], 'big') == 49
-      and 4 <= 40 and 40 + 49 - 1 <= 124, 'raw 40..88 = -24..+24, inside the Part validator\'s 4..124')
-
-# ---------------------------------------------------------------- v6.9: o3_stamp (a new 303 track's knobs at 64)
-PBF, SHB, LANE = 0x8edb0, 0x1001614e, 0x80000810
-def stamp(knobs, track=2, part=1, cur=1, slot=5, seen=None, path='/AUDIO/ACID/TB303.WAV', bankptr=True):
-    rig = Rig(); c = rig.cpu; m = c.mem
-    for i in range(0x192): m.w(FLEX_P + i, 'b', (i * 7 + 3) & 0xFF)
-    m.w(TABLE + 4, 'l', FLEX_P)
-    P = BANK + part * 6322
-    m.w(P + 0x8f04b + track * 5, 'b', slot); rig.path(slot, path)
-    if bankptr: m.w(0x46c82456, 'l', BANK)
-    m.w(0x100b14cf, 'b', cur)
-    rec = P + PBF + 30 * track; sh = rec + SHB - BANK; ln = LANE + 72 * track
-    for k in range(6): m.w(rec + k, 'b', knobs[k]); m.w(sh + k, 'b', 0xEE); m.w(ln + k, 'b', 0xDD)
-    if seen is not None: m.w(c.consts['o3_lastslot'] + track, 'b', seen + 1)
-    c.d[0], c.a[0], c.d[3], c.d[1], c.a[1] = 1, TABLE, track, part, BANK
-    for r in (6, 7): c.d[r] = 0x7777 + r
-    for r in range(2, 7): c.a[r] = 0x6600 + r
-    c.a[7] = STACK; done = []
-    c.hooks[0x40031ed6] = lambda cpu: done.append(1)
-    c.call('o3_page')
-    kept = all(c.d[r] == 0x7777 + r for r in (6, 7)) and all(c.a[r] == 0x6600 + r for r in range(2, 7)) and c.a[7] == STACK
-    g = lambda a: [m.r(a + k, 'b') for k in range(6)]
-    return g(rec), g(sh), g(ln), kept and bool(done) and c.d[0] == c.consts['o3_desc'], m.r(c.consts['o3_lastslot'] + track, 'b')
-z = [64, 0, 0, 0, 0, 0]
-r, sh, ln, ok, seen = stamp(z)
-check('stamp_new_track_knobs_64', r == [64, 64, 64, 64, 64, 0] and sh == [0xEE, 64, 64, 64, 64, 0xEE]
-      and ln == [0xDD, 64, 64, 64, 64, 0xDD] and ok and seen == 6, 'part %s shadow %s lane %s' % (r, sh, ln))
-r, sh, ln, ok, _ = stamp([64, 0, 0, 0, 0, 0], part=2, cur=0)
-check('stamp_other_part_no_lane', r[1:5] == [64] * 4 and sh[1:5] == [64] * 4 and ln == [0xDD] * 6 and ok)
-r, sh, ln, ok, _ = stamp([64, 0, 7, 0, 0, 0])
-check('stamp_set_knobs_untouched', r == [64, 0, 7, 0, 0, 0] and sh == [0xEE] * 6 and ln == [0xDD] * 6 and ok)
-r, sh, ln, ok, _ = stamp(z, seen=5)
-check('stamp_same_slot_untouched', r == z and sh == [0xEE] * 6 and ln == [0xDD] * 6 and ok, 'the author set them to 0 himself')
-r, sh, ln, ok, _ = stamp(z, bankptr=False)
-check('stamp_outside_bank_part_only', r[1:5] == [64] * 4 and sh == [0xEE] * 6 and ln == [0xDD] * 6 and ok)
-r, sh, ln, ok, seen = stamp(z, path='/AUDIO/KICK.WAV')
-check('stamp_ordinary_sample_untouched', r == z and sh == [0xEE] * 6 and seen == 0)
-r, sh, ln, ok, seen = stamp(z, track=7, part=3, cur=3, slot=127)
-check('stamp_track8_part4', r[1:5] == [64] * 4 and sh[1:5] == [64] * 4 and ln[1:5] == [64] * 4 and seen == 128 and ok)
+def playback_exp(c, stock):
+    """The machine record's PLAYBACK fields (o3_mover's first seven entries) over the stock FLEX record."""
+    exp = bytearray(stock); exp[0x9:0x12] = b'OCTA-303\0'
+    exp[0x16:0x3a] = b'TUNE\0\0CUT\0\0\0RES\0\0\0ENV\0\0\0DEC\0\0\0ACC\0\0\0'; exp[0x5f:0x64] = bytes([64, 64, 64, 64, 0])
+    for k in range(5): exp[0xce + 4 * k:0xd2 + 4 * k] = (0x4003c178).to_bytes(4, 'big')
+    exp[0xca:0xce] = c.consts['o3_fmt_tune'].to_bytes(4, 'big')            # v6.4: TUNE in semitones
+    exp[0x6a:0x6e] = (64 + T.TUNE_LO).to_bytes(4, 'big'); exp[0x9a:0x9e] = (T.TUNE_HI - T.TUNE_LO + 1).to_bytes(4, 'big')
+    exp[0x12a:0x12e] = bytes(4)
+    return exp
+STOCKREC = bytes((i * 7 + 3) & 0xFF for i in range(0x192))
+for p_ in ('/AUDIO/ACID/TB303.WAV', '/AUDIO/tb303sqd.wav'):               # v7.9: a TB303* sample is FLEX's
+    c, d0, kept = page(p_)
+    check('page_tb303_sample_is_stock_' + p_.split('/')[-1].split('.')[0].lower(), d0 == FLEX_P and kept
+          and bytes(c.mem.r(c.consts['o3_desc'] + i, 'b') for i in range(0x192)) == bytes(0x192)
+          and bytes(c.mem.r(FLEX_P + i, 'b') for i in range(0x192)) == STOCKREC, 'the stock FLEX record, nothing cloned')
 
 # ---------------------------------------------------------------- v7.0: o3_fmt_tune (TUNE as a note name)
 def fmt_tune(v):
@@ -335,13 +375,11 @@ def chrom(path, idx, track=3, machine=1, slot=6, part=2):
     kept = all(c.d[r] == 0x5500 + r for r in (3, 4, 5, 6, 7)) and all(c.a[r] == 0x6600 + r for r in (3, 4, 5, 6)) \
         and c.a[7] == STACK and c.d[2] == track
     return c.a[2], c.d[0], kept
-ok303 = all(chrom('/AUDIO/ACID/TB303.WAV', i)[:2] == (52 + i, 2) and chrom('/AUDIO/ACID/TB303.WAV', i)[2] for i in (0, 11, 12, 13, 24))
-check('chrom_303_keys_are_semitones', ok303, 'idx 0/12/24 -> raw 52/64/76 = -12/0/+12')
-check('chrom_303_square_dist_too', chrom('/AUDIO/tb303sqd.wav', 15)[0] == 67)
 okst = all(chrom(p, i, **kw)[:2] == (5 * i + 4, 2) and chrom(p, i, **kw)[2]
            for i in (0, 12, 24) for p, kw in (('/AUDIO/KICK.WAV', {}), ('/AUDIO/SYNTH.WAV', {}),
+                                               ('/AUDIO/ACID/TB303.WAV', {}), ('/AUDIO/tb303sqd.wav', {}),
                                                ('/AUDIO/TB303.WAV', {'machine': 0}), ('/AUDIO/TB303.WAV', {'slot': 200})))
-check('chrom_stock_for_other_tracks', okst, 'raw = 5 * idx + 4')
+check('chrom_stock_for_other_tracks', okst, 'raw = 5 * idx + 4 (v7.9: a TB303* sample too; the machine: chrom_machine_keys_are_semitones)')
 
 # ---------------------------------------------------------------- v6.4: the pitch is semitones, three octaves
 def f0(tune):
@@ -350,8 +388,6 @@ def f0(tune):
 check('tune_semitones_four_octaves', abs(f0(0) - 130.81) < 0.2 and abs(f0(-12) - 65.41) < 0.1 and abs(f0(-24) - 32.70) < 0.1
       and abs(f0(24) - 523.25) < 0.8 and abs(f0(7) - 196.0) < 0.3, '%.1f %.1f %.1f Hz' % (f0(-12), f0(0), f0(24)))
 check('tune_clamped_for_old_bytes', abs(f0(60) - f0(36)) < 0.01 and abs(f0(-60) - f0(-36)) < 0.01)
-for p, nm in (('/AUDIO/tb303sqd.wav', 'lowercase_variant'), ):
-    _, d0, kept = page(p); check('page_' + nm, d0 == desc and kept)
 for p, nm, kw in (('/AUDIO/KICK.WAV', 'ordinary_sample', {}), ('/AUDIO/SYNTH.WAV', 'synth_name', {}),
                   ('/AUDIO/TB303.WAV', 'recorder_slot', {'slot': 200}),
                   ('/AUDIO/TB303.WAV', 'other_machine', {'tblval': 0x400d4000})):
@@ -375,20 +411,20 @@ if os.path.exists(_dpath):      # the dEVILish module (its own PR): its manifest
 else:
     print('  (modules/devilish not in this tree: its three manifest checks skipped)')
 # a remix without dEVILish (remix.inc: DEVIL_ID 0x100): the knobs on FX2 are someone else's, neutral
-rig = Rig(source(devilish=False)); rig.path(4, '/AUDIO/TB303.WAV'); rig.voice(0, True, 4)
+rig = Rig(source(devilish=False)); rig.path(4, '/AUDIO/TB303.WAV'); rig.voice(0, True, 4); rig.machine(0, SU(0))
 st = R.Track(); ok = True
 for f in range(40):
     w = W(0, 60, 110, 90, 50, 127 if f % 5 == 0 else 0)
     L, _r = rig.call(0, w, 0, 16, f == 0, SILENCE, (127, 127, 127, 0, 127, 0, 127, 2, 2, 2, 1, 1), 2)
-    ok &= L == R.render_call(st, w, f == 0, 0, 16, True, None)
+    ok &= L == R.render_call(st, w, f == 0, 0, 16, True, None, setup=SU(0))
 check('no_devilish_in_remix_is_neutral', ok)
 
 # ---------------------------------------------------------------- v6.5 / v7.0: the 303's gate (SETUP's GATE)
 GF = ('gmode', 'gate', 'glvl', 'gstep', 'lstep', 'ltick', 'idle', 'kmax', 'tps', 'gnew', 'gel', 'gend',
-      'gsel', 'fcnt', 'fpt', 'fseen', 'gelf')
+      'gsel', 'fcnt', 'fpt', 'fseen', 'gelf', 'fskip', 'stopd')
 GOFF = {'gmode': 248, 'gate': 252, 'glvl': 256, 'gstep': 260, 'lstep': 264, 'ltick': 268, 'idle': 272,
         'kmax': 276, 'tps': 280, 'gnew': 284, 'gel': 288, 'gend': 292,
-        'gsel': 344, 'fcnt': 348, 'fpt': 352, 'fseen': 356, 'gelf': 360}
+        'gsel': 344, 'fcnt': 348, 'fpt': 352, 'fseen': 356, 'gelf': 360, 'fskip': 380, 'stopd': 384}
 check('gate_state_offsets_are_the_sources', all(Rig().cpu.consts['S_' + f.upper()] == GOFF[f] for f in GF))
 def gate_fuzz(n, seed):
     """o3_gate run on random states and inputs == ref303.gate_frame, every field"""
@@ -405,9 +441,10 @@ def gate_fuzz(n, seed):
         st.gsel = rnd.choice([0, 1, 1]); st.fseen = rnd.randint(0, 1)
         st.fcnt = rnd.choice([0, 1, 2, 3, 4094, 4095]); st.fpt = rnd.choice([0, 0, 1, 2, 3, 7, 40])
         st.gelf = rnd.choice([0, 1, 5, 6, 7, 13, 14, 15, 65534, 65535])
+        st.fskip = rnd.choice([0, 0, 1, 2]); st.stopd = rnd.randint(0, 1)
         step = rnd.choice([st.lstep, (st.lstep + 1) % LL, st.gstep, (st.gstep + 1) % LL, rnd.randrange(300)])
         tick = rnd.choice([st.ltick, rnd.randrange(12)])
-        seq = (rnd.choice([127, 0, 64]), step, tick, rnd.getrandbits(64), L)
+        seq = (rnd.choice([127, 0, 64]), step, tick, rnd.getrandbits(64), L, rnd.choice([1, 1, 0, 2]))   # v7.5: 2 = STOP key
         a3 = base + t * 512
         for f in GF: m.w(a3 + GOFF[f], 'l', getattr(st, f) & M32)
         rig.seq(t, seq)
@@ -423,14 +460,74 @@ def gate_fuzz(n, seed):
 bad = gate_fuzz(3000 if FULL else 800, 5)
 check('gate_state_machine_bit_exact', bad is None, bad or 'random states and inputs, every field')
 
+# v7.4 (Discord, 2 Nov 2026): GATE 303's first note after PLAY.  A stopped sequencer, then PLAY in the orders the
+# position reset and the first tick could reach the gate (a pair one or two frames apart, the START with either):
+# the first note stays open 3.5 ticks, as every other (before: ~1.5 ms in the paired orders: silent).
+class _GatePair:
+    """v7.5 (review): o3_gate and ref303.gate_frame on one state each, frame by frame, every field compared"""
+    def __init__(self, st, t=0):
+        self.st, self.t, self.rig = st, t, Rig(); c = self.rig.cpu; self.a3 = c.consts['o3_state'] + t * 512; self.bad = None
+        for f in GF: c.mem.w(self.a3 + GOFF[f], 'l', getattr(st, f) & M32)
+    def __call__(self, seq):
+        c = self.rig.cpu; m = c.mem
+        self.rig.seq(self.t, seq); m.w(self.a3 + GOFF['gnew'], 'l', self.st.gnew & M32)
+        c.d[2] = self.t; c.a[3] = self.a3; c.a[7] = STACK
+        c.call('o3_gate'); R.gate_frame(self.st, seq)
+        if self.bad is None:
+            got = {f: R.s32(m.r(self.a3 + GOFF[f], 'l')) for f in GF}; want = {f: getattr(self.st, f) for f in GF}
+            if got != want: self.bad = {f: (got[f], want[f]) for f in GF if got[f] != want[f]}
+_GBAD = []
+def _first_open(stop_frames, stop_at_tick=5, fpt=57, play_tick1_after=1, start_at=1, fresh=False, stop_word=0):
+    """the gate through the order measured under the port (3 Nov 2026, 1.40C MKI): a run, STOP (transport 0 or 2, step
+    word 0, the tick kept), PLAY (step word 1, tick 0, transport 1; tick 1 the next frame), the START a frame after
+    PLAY; returns the frames the first note's gate stays open (3.5 ticks: ~200)"""
+    st = R.Track(); st.latched = 1; st.gsel = 1; G = _GatePair(st)   # v7.5: the asm alongside, every frame
+    if not fresh:                                              # fresh: the first PLAY after boot (review)
+        for s_ in range(1, 4):                                 # running: the step word is the NEXT step
+            for k_ in range(6):
+                for _ in range(fpt): G((127, s_, k_, 0, 16, 1))
+        for _ in range(fpt * stop_at_tick // 6): G((127, 4, 0, 0, 16, 1))
+        for _ in range(stop_frames):                           # STOP early in a tick (Q1's regression); stop_word 2:
+            G((127, 4 if stop_word == 2 else 0, 0, 0, 16, stop_word))   # the STOP key, the position kept (STEM_REC.md)
+    seqs = [(127, 1, 0, 0, 16, 1)] * play_tick1_after + [(127, 1, 1, 0, 16, 1)] * fpt
+    for t_ in range(2, 6): seqs += [(127, 1, t_, 0, 16, 1)] * fpt
+    for fr, sq in enumerate(seqs):
+        if fr == start_at: st.gnew = 1
+        G(sq)
+        if fr > start_at and not st.gate: _GBAD.append(G.bad); return fr - start_at
+    _GBAD.append(G.bad); return None
+_fo = [_first_open(3000), _first_open(200), _first_open(3000, stop_at_tick=1), _first_open(30, stop_at_tick=1),
+       _first_open(3000, start_at=0), _first_open(0, fresh=True), _first_open(0, fresh=True, start_at=0),
+       _first_open(3000, stop_word=2), _first_open(3000, stop_word=2, start_at=0)]
+check('gate_first_note_after_play', all(f is not None and 195 <= f <= 205 for f in _fo) and not any(_GBAD),
+      'open frames %s (3.5 ticks = 199; also the first PLAY after boot and the STOP key); asm == ref %s' % (_fo, [b for b in _GBAD if b] or 'every frame'))
+def _slide_open(mark):
+    """a note on step 1 (the START a frame after the step word reads 1), a slide marker on step `mark` (0-based):
+    the frames the gate stays open; legato only for a marker on the next step"""
+    st = R.Track(); st.latched = 1; st.gsel = 1; fpt = 57; sl = 1 << mark; G = _GatePair(st)
+    for k_ in range(6):
+        for _ in range(fpt): G((127, 0, k_, sl, 16, 1))
+    seqs = []
+    for s_ in (1, 2, 3, 4):
+        for k_ in range(6): seqs += [(127, s_ % 16, k_, sl, 16, 1)] * fpt
+    for fr, sq in enumerate(seqs[1:]):
+        if fr == 0: st.gnew = 1
+        G(sq)
+        if fr > 0 and not st.gate: _GBAD.append(G.bad); return fr
+    _GBAD.append(G.bad); return None
+_GBAD = []
+_so = [_slide_open(1), _slide_open(2), _slide_open(5)]
+check('gate_slide_on_the_next_step', 540 <= _so[0] <= 560 and all(195 <= x <= 205 for x in _so[1:]) and not any(_GBAD),
+      'marker on step 2: %s frames (legato), step 3: %s, step 6: %s (3.5 ticks)' % tuple(_so))
+
 PATG = [(0, 1, 0), (12, 0, 1), (7, 0, 0), (None, 0, 0), (0, 0, 1), (3, 1, 1), (5, 0, 0), (0, 0, 0)] * 2
 SLIDES = sum(1 << ((i + 1) % 16) for i, p in enumerate(PATG) if p[2])
 def gate_script(fname, steps=32, tf=2, setup=None, alive=True):
     """the sequencer sped up: 6 ticks a step, tf frames a tick; PATG's trigs, slides as trigless steps;
-    setup = the TB-303 machine's SETUP bytes (None: a TB303* sample)"""
+    setup = the TB-303 machine's SETUP bytes (None: the carrier fname names, on the machine: run(), SU)"""
     sc = []
     for f in range(steps * 6 * tf):
-        k = f // tf; sq = (127, k // 6, k % 6, SLIDES, 16)
+        k = f // tf; sq = (127, k // 6 + 1, k % 6, SLIDES, 16)          # v7.5: the step word holds the NEXT step
         st_i = (k // 6) % 16; first = f % (6 * tf) == 0
         n, acc, sl = PATG[st_i]; prev = PATG[(st_i - 1) % 16]
         trig = first and n is not None and not prev[2]
@@ -440,19 +537,13 @@ def gate_script(fname, steps=32, tf=2, setup=None, alive=True):
         sc.append((w, 0 if trig else None, fname, alive, None, 1, sq, None, setup))
     return sc
 okg = True
-for wv in (0, 1, 2, 3):
+for wv in (0, 1, 2, 3, 4, 5, 6, 7):
     A, B, mm = run(gate_script('KICK.WAV', setup=(wv, 1, 64, 0, 0, 64))); okg &= mm is None
-check('bit_exact_machine_gate_303', okg, 'WAVE SAW SQR SAW+D SQR+D, GATE 303, slides, rests, 32 steps')
+check('bit_exact_machine_gate_303', okg, 'WAVE SAW SQR SAW+D SQR+D RSAW RSQR RSAWD RSQRD (v7.9), GATE 303, slides, rests, 32 steps')
 A0, _, mm0 = run(gate_script('KICK.WAV', setup=(1, 0, 90, 60, 100, 20), alive=False))
 check('bit_exact_machine_gate_off_dead_voice', mm0 is None, 'GATE OFF, FINE/SLID/DRIV/ACCV moved, no sample voice')
-st_a = R.Track(); st_b = R.Track(); same = True
-for f, fr in enumerate(gate_script('TB303.WAV')):
-    ra = R.render_call(st_a, fr[0], fr[1] is not None, 0, 16, True, None, last=True, seq=fr[6])
-    rb = R.render_call(st_b, fr[0], fr[1] is not None, 0, 16, True, None)
-    same &= ra == rb
-check('gate_off_for_a_tb303_sample', same, 'no machine: the AMP decides, v6.9 sample for sample')
 _, _, mm1 = run(gate_script('TB303SQD.WAV'))
-check('bit_exact_tb303_sample_with_sequencer', mm1 is None)
+check('bit_exact_machine_gate_off_with_sequencer', mm1 is None, 'SQR+D, GATE OFF (v6.9 sample for sample), the sequencer running')
 def gate_len(tf, setup=(0, 1, 64, 0, 0, 64)):
     """frames from a START to the gate's close, the sequencer at tf frames a tick (no slide)"""
     st = R.Track(); n = None
@@ -476,7 +567,7 @@ def mscen(seed, frames):
                   rnd.randint(0, 127), rnd.choice([0, 0, 64, 127]))
         if rnd.random() < 0.05:                                            # SETUP moved or locked
             i = rnd.randrange(6); su = list(su)
-            su[i] = rnd.choice([0, 1, 2, 3, 4, 63, 64, 65, 127, 200, rnd.randint(0, 127)])
+            su[i] = rnd.choice([0, 1, 2, 3, 4, 5, 6, 7, 8, 63, 64, 65, 127, 200, rnd.randint(0, 127)])
         if rnd.random() < 0.03:
             df = None if rnd.random() < 0.4 else tuple(rnd.randint(0, 127) for _ in range(12)); slot = rnd.choice([1, 2])
         k = f // 2; sq = (127, k // 6, k % 6, rnd.getrandbits(16), 16)
@@ -496,10 +587,225 @@ _n = _setup_effect(0, 0)
 _eff = {nm: _setup_effect(i, v) for i, v, nm in ((0, 1, 'WAVE'), (2, 100, 'FINE'), (3, 100, 'SLID'), (4, 127, 'DRIV'), (5, 0, 'ACCV'))}
 check('machine_setup_knobs_act', _n is not None and all(a is not None and a != _n for nm, a in _eff.items() if nm != 'SLID'),
       'WAVE FINE DRIV ACCV change the sound (SLID: the next slide)')
-_sm = run([(W(0, 40, 100, 80, 60, 0), 0, 'TB303.WAV', True, None, 1, None, None, T.SETUP_NEUTRAL)] +
-          [(W(0, 40, 100, 80, 60, 0), None, 'TB303.WAV', True, None, 1, None, None, T.SETUP_NEUTRAL)] * 30)
-_ss = run([(W(0, 40, 100, 80, 60, 0), 0, 'TB303.WAV', True)] + [(W(0, 40, 100, 80, 60, 0), None, 'TB303.WAV', True)] * 30)
-check('machine_neutral_is_the_tb303_sample', _sm[2] is None and _ss[2] is None and _sm[0] == _ss[0])
+# ---------------------------------------------------------------- v7.9: WAVE's R, the factory preset (TM3 as Roland trims it)
+def _fab_render(code, cut=64, res=127, env=0, dec=0, frames=3600):
+    st = R.Track(); y = []
+    for f in range(frames):
+        r = R.render_call(st, W(-12, cut, res, env, dec, 0), f == 0, code if f == 0 else -1, 16)   # key C = C2, 65.4 Hz
+        y += [R.s32(x) >> 16 for x in r]
+    return y, st
+def _ring_ms(y, a, b, fs=44100.0):
+    """service notes p. 7: the first interval between the ring's peaks after the saw's edge: the VCO's cycles averaged
+    in sync, the harmonics under 150 Hz removed (the cycle is periodic: an FFT high-pass; numpy only)"""
+    import numpy as np
+    x = np.asarray(y[int(a * fs):int(b * fs)], float)
+    f0 = R.T.F_LOW * 2 ** (52 / 12.0); P = fs / f0; n = int(len(x) / P) - 1
+    cyc = np.mean([np.interp(np.arange(int(P)), np.arange(len(x)) - k * P, x) for k in range(n)], axis=0)
+    X = np.fft.rfft(cyc); X[:int(150.0 / (fs / len(cyc))) + 1] = 0; h = np.fft.irfft(X, len(cyc))
+    e = int(np.argmax(np.abs(np.diff(np.tile(cyc, 2)))[:len(cyc)])); h = np.roll(h, -e - 2)
+    w = h[:int(0.006 * fs)]; sg = np.sign(w[np.argmax(np.abs(w[:int(0.002 * fs)]))])
+    pk = [i for i in range(1, len(w) - 1) if (w[i] - w[i - 1]) * (w[i + 1] - w[i]) < 0 and np.sign(w[i]) == sg]
+    return (pk[1] - pk[0]) / fs * 1e3 if len(pk) > 1 else float('nan')
+try:
+    import numpy as _np_fab                                 # the emu extra brings numpy; without it the ring check skips
+except ImportError:
+    _np_fab = None
+_yr, _ = _fab_render(4); _y0, _ = _fab_render(0)
+if _np_fab is None:
+    _rr = _r0 = [2.0] * 4; print('[SKIP] fab_roland_ring_2ms: no numpy')
+else:
+    _rr = [_ring_ms(_yr, a, a + 0.1) for a in (0.5, 0.7, 0.9, 1.1)]; _r0 = [_ring_ms(_y0, a, a + 0.1) for a in (0.5, 0.7, 0.9, 1.1)]
+check('fab_roland_ring_2ms', all(abs(v - 2.0) <= 0.1 for v in _rr),
+      "RSAW at Roland's VCF procedure (key C, CUT 64, RES 127, ENV/DEC/ACC 0): the ring's first interval %s ms, 500-1200 ms "
+      "(2.0 +- 0.1; SAW, Din Sync's 303: %s ms)" % ('/'.join('%.2f' % v for v in _rr), '/'.join('%.2f' % v for v in _r0)))
+_sh = []
+for _c in (0, 32, 64, 95, 127):
+    _, _sa = _fab_render(0, _c, 127, 0, 0, 300); _, _sb = _fab_render(4, _c, 127, 0, 0, 300)
+    _sh.append(_sb.sctrl - _sa.sctrl)
+check('fab_same_octaves_every_cut', all(v == T.TM3_FAB or (v < T.TM3_FAB and _c == 127) for v, _c in zip(_sh, (0, 32, 64, 95, 127))),
+      'the cutoff moves by %d (%.3f octave) at CUT 0/32/64/95/127: %s (the ladder\'s top clamps)' % (T.TM3_FAB, T.TM3_FAB / 3072.0, _sh))
+# ---------------------------------------------------------------- v7.7: DRIV = VR8 past Din Sync's position, into Q33/Q34
+import types as _ty
+def _drv_ops(y, g):
+    """every product of octa303.s's .Losd / DRVSAT path (= ref303.drive), for the overflow sweep"""
+    y = max(-T.DRV_YLIM, min(T.DRV_YLIM, y)); m = [(y >> 6) * g]; x = m[0] >> 6
+    K, Rr, Wd, D4 = (T.DRV_KN, T.DRV_RN, T.DRV_WN, T.DRV_DN4) if x < 0 else (T.DRV_KP, T.DRV_RP, T.DRV_WP, T.DRV_DP4)
+    d = abs(x) - K
+    if d > 0:
+        d = min(d, D4); m.append(d * Rr); t = m[-1] >> 6; i = t >> 16
+        if i >= 256: v = T.DRV_TH[256]
+        else: m.append((T.DRV_TH[i + 1] - T.DRV_TH[i]) * ((t & 0xFFFF) >> 1)); v = T.DRV_TH[i] + (m[-1] >> 15)
+        m.append(Wd * v)
+    return m
+_ovf = _n = 0; _hi = _lo = 0
+_ys = list(range(-(1 << 25), (1 << 25) + 1, 8191)) + [s * (T.DRV_YLIM + e) for s in (-1, 1) for e in (-1, 0, 1)] + [s * (1 << 25) for s in (-1, 1)]
+for g in T.DRV_G[1:]:
+    st_ = _ty.SimpleNamespace(osin=g)
+    for y in _ys:
+        for v in _drv_ops(y, g):
+            _n += 1; _ovf += not (-2 ** 31 <= v < 2 ** 31)
+        o = R.drive(st_, y); _hi = max(_hi, o); _lo = min(_lo, o)
+check('driv_no_overflow', _ovf == 0, '%d products, DRIV 1..127, y over +-2^25: every one in 32 bits' % _n)
+check('driv_ceiling_per_side', 0 < _hi <= T.DRV_LP and -T.DRV_LN <= _lo < 0,
+      'max %+d <= L+ %d, min %+d >= -L- %d' % (_hi, T.DRV_LP, _lo, T.DRV_LN))
+def _drv_scen(drv, wave, df):
+    su = (wave, 1, 64, 0, drv, 64); sc = []
+    for f in range(144 if FULL else 48):
+        k = f // 2; sq = (127, k // 6, k % 6, 0, 16); acc = 127 if (f // 12) % 2 == 0 else 0
+        sc.append((W(12 if acc else -12, 127, 127, 127, 64, acc), 0 if f % 12 == 0 else None, 'KICK.WAV', True, df, 1, sq, df, su))
+    return sc
+def _drv_never(st, y): raise AssertionError('drive() called at DRIV 0')
+_drv_keep = R.drive; R.drive = _drv_never
+try:
+    _ok0 = True
+    for wv in (0, 2):
+        for df in (None, (127,) * 12):
+            _, _, _mm0 = run(_drv_scen(0, wv, df)); _ok0 &= _mm0 is None
+except AssertionError:
+    _ok0 = False
+finally:
+    R.drive = _drv_keep
+check('driv_0_skips_the_block', _ok0 and T.DRV_G[0] == T.DRV_G0 == 4096 and T.DRV_G[1] != 4096,
+      'DRIV 0, loud accents, SAW and SAW+D, dEVILish on/off: the reference never enters drive() and the asm equals it')
+_bad = None; _pk = {}
+for drv in (1, 64, 127):
+    for wave in ((0, 1, 2, 3) if drv == 127 else (0, 2)):              # 2, 3 = the pedal voices: the positive side's knee and cap
+        for df in (None, (127,) * 12):
+            A, B, mm = run(_drv_scen(drv, wave, df))
+            if mm is not None and _bad is None: _bad = (drv, wave, df is not None, mm)
+            s = [((v & 0xFFFFFFFF) >> 16) - (65536 if v & 0x80000000 else 0) for v in A]
+            _pk[(drv, wave, df is not None)] = (max(s), min(s))
+check('bit_exact_driv_loud', _bad is None, 'DRIV 1/64 (SAW, SAW+D) and 127 (all four waves), dEVILish all 127 on/off, accents 127 at CUT/RES/ENV 127'
+      if _bad is None else 'DRIV %d wave %d dEVILish %s mismatch @%s' % _bad)
+_neg = min(v[1] for k, v in _pk.items() if k[0] == 127); _pos = max(v[0] for k, v in _pk.items() if k[0] == 127)
+check('driv_127_reaches_both_knees', _neg <= -(T.DRV_KN >> 6) and _pos >= (T.DRV_KP >> 6),
+      'DRIV 127: peaks %+d / %+d, knees -%d / +%d (the bit-exact run covers both sides)' % (_pos, _neg, T.DRV_KN >> 6, T.DRV_KP >> 6))
+
+# ---------------------------------------------------------------- v7.8 (V8A): the MEG and the accent from the circuit
+def _meg_t10(dec):                                   # ref303's own MEG (the integer steps), frames to 10 % of its peak
+    m, n = T.ONE30, 0
+    while m > T.ONE30 // 10 and n < 20000:
+        m = R.mul30(m, R.megf(m, dec)); n += 1
+    return n * T.CS / T.FS * 1e3
+_t0, _t127 = _meg_t10(0), _meg_t10(127)
+check('meg_roland_min_max', abs(_t0 - 200.0) < 4.0 and abs(_t127 - 2500.0) < 50.0,
+      'DECAY 0 (and accents) at 10 %% in %.0f ms, DECAY 127 in %.0f ms (Roland: MIN 200 ms, MAX 2.5 s)' % (_t0, _t127))
+_mono = all(0 < R.megf(m, d) < T.ONE30 for d in range(128) for m in (1, 3, 1000, 1 << 10, 1 << 15, 1 << 20, 1 << 25, T.ONE30 // 3, T.ONE30))
+_dmono = all(_meg_t10(d) <= _meg_t10(d + 8) for d in range(0, 120, 8))
+check('meg_factor_sane', _mono and _dmono, 'every factor in (0, 1) at any level and DECAY; the decay time grows with DECAY')
+_rat = [((1 << 30) - row[j + 1]) / float((1 << 30) - row[j]) for row in T.MEG_T for j in range(T.MEG_NLEV - 4)]
+check('meg_table_smooth', 0.5 < min(_rat) and max(_rat) < 1.5,
+      "each row's decay (1 - factor) moves by %.3f..%.3f a level step: no stuck tail (review: a factor of 1.0 past the run's end)" % (min(_rat), max(_rat)))
+# ---------------------------------------------------------------- v7.9: dEVILish ADEC continuous (ADEC_T, o3meg.adec_tables)
+def _adec_t10(a):                                    # the accent MEG at dEVILish ADEC a, frames to 10 %, in ms
+    m, n = T.ONE30, 0
+    while m > T.ONE30 // 10 and n < 40000:
+        m = R.mul30(m, R.megf(m, T.DF_ADEC[a], T.ADEC_T)); n += 1
+    return n * T.CS / T.FS * 1e3
+_lv = (1, 3, 1000, 1 << 10, 1 << 15, 1 << 20, 1 << 25, T.ONE30 // 3, T.ONE30 // 2, T.ONE30 - 1, T.ONE30)
+check('adec_50_is_v78', T.ADEC_T[T.ADEC_Q50 >> 2] == T.MEG_T[0] and T.DF_ADEC[50] == T.ADEC_Q50
+      and all(R.megf(m, T.ADEC_Q50, T.ADEC_T) == R.megf(m, 0) for m in _lv),
+      'ADEC 50 (and no dEVILish) reads ADEC_T row 13 = MEG_T row 0, every factor the same bits')
+_ta = [_adec_t10(a) for a in range(128)]
+_up = max(_ta[a + 1] / _ta[a] for a in range(127)); _dn = min(_ta[a + 1] / _ta[a] for a in range(127))
+check('adec_continuous', 1.0 <= _dn and _up <= 1.06,
+      'ADEC 0..127: the time to 10 %% grows at every step, by %.1f..%.1f %% (no jump at 50: 49 %.0f / 50 %.0f / 51 %.0f ms)'
+      % (100 * (_dn - 1), 100 * (_up - 1), _ta[49], _ta[50], _ta[51]))
+def _adec_tl(a, lvl):                               # frames to a level below 10 %: the tail (review, 7 Nov)
+    m, n = T.ONE30, 0
+    while m > int(T.ONE30 * lvl) and n < 400000:
+        m = R.mul30(m, R.megf(m, T.DF_ADEC[a], T.ADEC_T)); n += 1
+    return n
+_tl = [[_adec_tl(a, l) for a in range(0, 128, 2)] for l in (0.01, 0.001)]
+check('adec_tail_monotonic', all(v[i + 1] >= v[i] for v in _tl for i in range(len(v) - 1)),
+      'the tail too (1 %% and 0.1 %%) lengthens with ADEC, across 50 included (ADEC 50: %.0f / %.0f ms)'
+      % (_adec_tl(50, 0.01) * T.CS / T.FS * 1e3, _adec_tl(50, 0.001) * T.CS / T.FS * 1e3))
+check('adec_ends_devil_fish', abs(_ta[0] - 30.0) <= 2.0 and abs(_ta[127] - 3000.0) <= 100.0,
+      'ADEC 0 at 10 %% in %.1f ms, ADEC 127 in %.0f ms (Devil Fish Accent Decay 30 ms .. 3 s)' % (_ta[0], _ta[127]))
+check('adec_factor_sane', all(0 < R.megf(m, q, T.ADEC_T) < T.ONE30 for q in range(2, 130) for m in _lv),
+      'every ADEC_T factor in (0, 1), every row position and level')
+def _twin_step(s, Tm, dt, a7, res):                  # the twin's a2_step (sim.c), floats: the circuit itself
+    import math
+    VT, NVT, IS = 0.02585, 1.752 * 0.02585, 2.52e-9
+    def iser(v, Rr):
+        if v <= 0: return 0.0
+        i = max(0.5 * v / Rr, 1e-12)
+        for _ in range(60):
+            f = i * Rr + NVT * math.log(1 + i / IS) - v; i2 = i - f / (Rr + NVT / (IS + i))
+            if i2 <= 0: i2 = 0.1 * i
+            if abs(i2 - i) < 1e-15: return i2
+            i = i2
+        return i
+    r = T._smap(res / 127.0, 0.16)
+    Rt = (1 - a7) * 50e3 + 201.0; Rb = a7 * 50e3 + 1.0; kth = Rb / (Rt + Rb); Rth = Rt * Rb / (Rt + Rb)
+    Rbw = r * 50e3 + 1.0; Rwc = (1 - r) * 50e3 + 1.0; RA = 47e3 + Rbw + Rwc * 1e5 / (Rwc + 1e5)
+    VA0 = (s['vc'] * 1e5 + 3.27 * Rwc) / (Rwc + 1e5); g = 1 / Rth + 1 / 47e3
+    Ve = (Tm * kth / Rth + s['v34'] / 47e3) / g; Re = 1 / g
+    i24 = iser(Ve - VA0, Re + RA); W7 = Ve - i24 * Re
+    k = dt / (1e-6 * (Rwc + 1e5)); s['vc'] = (s['vc'] + k * (3.27 + i24 * 1e5)) / (1 + k)
+    V69 = VT * math.log(1.0 + (48e-6 + s['i27']) / 1e-14); G = 0.033e-6 / dt + 1 / 47e3
+    i27 = iser((0.033e-6 * s['v34'] / dt + W7 / 47e3) / G - V69, 22e3 + 1 / G)
+    s['v34'] = (0.033e-6 * s['v34'] / dt + W7 / 47e3 - i27) / G; s['i27'] = i27
+    Wp = (s['vc'] * 1e5 + 3.27 * Rwc) / (Rwc + 1e5) + i24 * Rwc * 1e5 / (Rwc + 1e5)
+    return 2.2e3 * (Wp - 3.27) / 1e5 / (VT * math.log(2))
+_ew, _ev, _vmax = 0.0, 0.0, 0
+for _acc, _res in ((127, 0), (127, 127), (95, 64), (64, 32), (32, 127), (8, 100)):
+    _st = R.Track(); _st.acci, _st.res, _st.spd = _acc, _res, 2
+    _tw = {'vc': 3.27, 'v34': 0.0, 'i27': 0.0}; _a7 = T._smap(_acc / 127.0, 0.16)
+    _m = T.ONE30
+    for _f in range(2000):                            # 0.73 s: three accents 240 ms apart, the MEG's own decay
+        if _f % 660 == 0: _m = T.ONE30
+        _m = R.mul30(_m, R.megf(_m, 0)) if _f % 660 < 600 else 0
+        _sw, _vi = R.accent(_st, _m)
+        for _j in range(2): _oc = _twin_step(_tw, 9.99 * _m / 2.0 ** 30, T.CS / T.FS / 2, _a7, _res)
+        _ew = max(_ew, abs(_sw / 3072.0 - _oc)); _ev = max(_ev, abs(_vi / 16384.0 - _tw['i27'] / 48e-6)); _vmax = max(_vmax, _vi)
+check('accent_is_the_circuit', _ew < 0.01 and _ev < 0.01,
+      'ref303 vs the circuit in floats (the twin\'s a2_step): push within %.4f octaves, I27 / I_Q31 within %.4f (max %.2f)' % (_ew, _ev, _vmax / 16384.0))
+_ovf, _n = 0, 0
+_keep = R.CHECK; R.CHECK = True
+try:
+    for _spd in (1, 2, 3):
+        for _acc in (1, 64, 95, 127):
+            for _res in (0, 64, 127):
+                _st = R.Track(); _st.acci, _st.res, _st.spd = _acc, _res, _spd
+                for _f in range(1500):
+                    _m = T.ONE30 if _f % 100 < 3 else T.ONE30 // 2   # accents in a row, the MEG near its peak
+                    _sw, _vi = R.accent(_st, _m); _n += 1
+                    if not (0 <= _st.dvc < 2 ** 30 and 0 <= _st.v34 < 2 ** 30 and 0 <= _st.y27 <= T.AC_YMAX
+                            and 0 <= _sw < 2 ** 24 and 0 <= _vi * 127 < 2 ** 31): _ovf += 1
+except OverflowError: _ovf += 1
+R.CHECK = _keep
+check('accent_no_overflow', _ovf == 0, '%d frames, SPD FAST/NORM/SLOW, ACC 1..127, RES 0..127, the MEG held high: states in range' % _n)
+import inspect as _insp, random as _rnd
+_src = _insp.getsource(R.accent).replace("if tm == 0 and st.v34 == 0", "if False and tm == 0 and st.v34 == 0").replace('def accent(', 'def _accent_full(')
+_ns = dict(R.__dict__); exec(_src, _ns); _full = _ns['_accent_full']
+_r = _rnd.Random(78); _bad = 0
+for _k in range(3000 if FULL else 600):
+    _s1 = R.Track(); _s1.acci, _s1.res, _s1.spd = _r.randint(0, 127), _r.randint(0, 127), _r.choice([1, 2, 3])
+    _s1.dvc = _r.choice([0, _r.randint(0, 2000), _r.randint(0, 10 ** 6)]); _s1.v34 = _r.choice([0, 0, _r.randint(0, 10 ** 6)])
+    _s1.y27 = _r.choice([0, 0, _r.randint(0, 10 ** 6)]); _tm = _r.choice([0, 0, _r.randint(0, T.ONE30)])
+    _s2 = R.Track(); _s2.__dict__.update(_s1.__dict__)
+    if R.accent(_s1, _tm) != _full(_s2, _tm) or (_s1.dvc, _s1.v34, _s1.y27) != (_s2.dvc, _s2.v34, _s2.y27): _bad += 1
+check('accent_rest_shortcut_exact', _bad == 0, 'the at-rest shortcut = the two sub-steps, outputs and state (%d random states)' % (3000 if FULL else 600))
+check('p6_asymmetric', abs(T.P6_FP[256] / T.P6_F[256] - T.CAL['p6r']) < 0.002,
+      'pin 6: the positive side at %.3f x the negative (p6r %.2f)' % (T.P6_FP[256] / T.P6_F[256], T.CAL['p6r']))
+def _acc_scen(df, accs=(127, 95, 64, 32, 0), res=(0, 64, 127)):
+    sc = []
+    for r in res:
+        for a in accs:
+            for f in range(36 if FULL else 18):
+                sc.append((W(12 if a else -12, 90, r, 100, 40, a), 0 if f == 0 else None, 'TB303.WAV', True, df))
+    return sc
+_bad = None
+for _df in (None, (25, 0, 0, 64, 0, 50, 0, 0, 0, 0, 0, 0), (25, 0, 0, 64, 0, 50, 0, 0, 2, 0, 0, 0),
+            (25, 0, 0, 64, 0, 10, 0, 0, 1, 0, 0, 0), (25, 0, 0, 64, 0, 127, 0, 2, 1, 0, 0, 0),
+            (25, 0, 0, 64, 0, 0, 0, 0, 1, 0, 0, 0), (25, 0, 0, 64, 0, 49, 0, 0, 1, 0, 0, 0),
+            (25, 0, 0, 64, 0, 51, 0, 0, 1, 0, 0, 0), (25, 0, 0, 64, 0, 90, 0, 0, 1, 0, 0, 0)):
+    _A, _B, _mm = run(_acc_scen(_df))
+    if _mm is not None and _bad is None: _bad = (_df, _mm)
+check('bit_exact_accent_circuit', _bad is None,
+      'accents in a row ACC 127..0 at RES 0/64/127: the 303, SPD FAST, SPD SLOW, ADEC 0/10/49/50/51/90/127 (v7.9: ADEC_T), SWP SELF'
+      if _bad is None else 'dEVILish %s mismatch @%s' % _bad)
 
 # ---------------------------------------------------------------- v7.0: the machine's registration helpers
 PP = lambda part: BANK + 0x8ed80 + part * 6322
@@ -581,16 +887,18 @@ def mdesc_built():
     c.a[7] = STACK; c.call('o3_mdesc'); d = c.d[0]
     return c, d, bytes(m.r(d + i, 'b') for i in range(0x192))
 c, d, md = mdesc_built()
-_pb = bytes(c.mem.r(c.consts['o3_desc'] + i, 'b') for i in range(0x192))
-exp = bytearray(clone)
+exp = playback_exp(c, STOCKREC)
 exp[0x3a:0x5e] = b''.join(n.encode().ljust(6, b'\0') for n in T.SETUP_NAMES); exp[0x64:0x6a] = bytes(T.SETUP_NEUTRAL)
 for k in range(6):
     exp[0x82 + 4 * k:0x86 + 4 * k] = bytes(4); exp[0xb2 + 4 * k:0xb6 + 4 * k] = T.SETUP_COUNT[k].to_bytes(4, 'big')
     exp[0x112 + 4 * k:0x116 + 4 * k] = bytes(4); exp[0x142 + 4 * k:0x146 + 4 * k] = bytes(4)
 exp[0xe2:0xfa] = b''.join(c.consts[n].to_bytes(4, 'big') for n in ('o3_fmt_wave', 'o3_fmt_gate', 'o3_fmt_fine')) + (0x4003c178).to_bytes(4, 'big') * 3
 exp[0x18a:0x192] = bytes.fromhex('0000111111311311')
-check('machine_record_fields', d == c.consts['o3_desc'] + 0x194 and md == bytes(exp) and _pb == bytes(0x192),
+check('machine_record_fields', d == c.consts['o3_desc'] and md == bytes(exp),
       'diff at %s' % [hex(i) for i in range(0x192) if md[i] != exp[i]][:6])
+check('machine_tune_three_octaves', md[0x16:0x1c] == b'TUNE\0\0' and md[0x5e] == STOCKREC[0x5e]
+      and int.from_bytes(md[0x6a:0x6e], 'big') == 40 and int.from_bytes(md[0x9a:0x9e], 'big') == 49
+      and 4 <= 40 and 40 + 49 - 1 <= 124, 'raw 40..88 = -24..+24, inside the Part validator\'s 4..124')
 def mpage(signed, path='/AUDIO/KICK.WAV'):
     rig = Rig(); c = rig.cpu; m = c.mem
     for i in range(0x192): m.w(FLEX_P + i, 'b', (i * 7 + 3) & 0xFF)
@@ -606,8 +914,8 @@ def mpage(signed, path='/AUDIO/KICK.WAV'):
     c.call('o3_page')
     kept = all(c.d[r] == 0x7777 + r for r in (6, 7)) and all(c.a[r] == 0x6600 + r for r in range(2, 7)) and c.a[7] == STACK
     return c.d[0] - c.consts['o3_desc'] if c.d[0] != FLEX_P else 'stock', kept and bool(done)
-check('page_machine_gets_its_record', mpage(True) == (0x194, True) and mpage(True, '/AUDIO/TB303.WAV') == (0x194, True)
-      and mpage(False) == ('stock', True) and mpage(False, '/AUDIO/TB303.WAV') == (0, True))
+check('page_machine_gets_its_record', mpage(True) == (0, True) and mpage(True, '/AUDIO/TB303.WAV') == (0, True)
+      and mpage(False) == ('stock', True) and mpage(False, '/AUDIO/TB303.WAV') == ('stock', True))
 def lfoname(signed, machine=1):
     """o3_lfo_name at 0x4003bff0 in the LFO PMTR formatter: a0 = Part + 0x8eda2 + track, d1 = track."""
     rig = Rig(); c = rig.cpu; m = c.mem
@@ -622,7 +930,7 @@ def lfoname(signed, machine=1):
     kept = c.d[1] == track and c.d[2] == 4 and c.a[4] == 0x6604 and c.a[7] == STACK
     return out[0] if out else None, kept
 _r, _k = lfoname(True)
-check('lfo_names_machine_record', _k and _r[0] == 'rec' and _r[1] == Rig().cpu.consts['o3_desc'] + 0x194, str(_r))
+check('lfo_names_machine_record', _k and _r[0] == 'rec' and _r[1] == Rig().cpu.consts['o3_desc'], str(_r))
 check('lfo_names_flex_and_others_stock', lfoname(False) == (('stock', TABLE, 1), True)
       and lfoname(False, machine=2) == (('stock', TABLE, 2), True), str((lfoname(False), lfoname(False, 2))))
 # ---- v7.1: held trig + UP / DOWN (o3_octave) and the automatic slide lock (o3_autoslide)
@@ -744,12 +1052,15 @@ def fmt(name, v):
         if not x: break
         b += bytes([x])
     return (b.decode(), c.d[0]), ok
-_fw = [fmt('o3_fmt_wave', v) for v in (0, 1, 2, 3, 9, -1)]
+_fw = [fmt('o3_fmt_wave', v) for v in (0, 1, 2, 3, 4, 5, 6, 7, 9, -1)]
 _fg = [fmt('o3_fmt_gate', v) for v in (0, 1, 5)]
-check('fmt_wave_gate_labels', [x[0][0] for x in _fw] == ['SAW', 'SQR', 'SAW+D', 'SQR+D', 'SQR+D', 'SAW']
+check('fmt_wave_gate_labels', [x[0][0] for x in _fw] == list(T.WAVE_LABELS) + ['RSQRD', 'SAW']
       and all(x[1] and x[0][1] == len(x[0][0]) for x in _fw + _fg) and [x[0][0] for x in _fg] == ['OFF', '303', '303'])
 _ff = [fmt('o3_fmt_fine', v) for v in (0, 64, 127)]
 c0 = Rig().cpu
+_lw = bytes(c0.mem.r(c0.consts['o3_lwave'] + i, 'b') for i in range(6 * len(T.WAVE_LABELS)))
+check('wave_labels_fit_their_field', all(_lw[6 * i:6 * i + 6] == l.encode().ljust(6, b'\0') for i, l in enumerate(T.WAVE_LABELS))
+      and all(len(l) <= 5 for l in T.WAVE_LABELS), 'v7.9: 8 labels, each in its 6-byte field with its NUL (trap-name-nul)')
 check('fmt_fine_signed', [x[0] for x in _ff] == [(0x81000000, 0x400b465d, -64), (0x81000000, 0x400b465d, 0), (0x81000000, c0.consts['o3_f_plus'], 63)]
       and all(x[1] for x in _ff))
 

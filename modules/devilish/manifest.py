@@ -1,6 +1,6 @@
 """dEVILish -- Robin Whittle's Devil Fish mods to the TB-303, as an FX for OCTA303 tracks.
 
-Put dEVILish on the FX1 or FX2 of an OCTA-303 track (or a FLEX track playing a TB303* sample): OCTA303's
+Put dEVILish on the FX1 or FX2 of an OCTA-303 track: OCTA303's
 voice reads this slot's twelve knobs from the live lane and applies them INSIDE the 303 -- in
 the oscillator's level into the filter, the filter's frequency, its feedback, the envelopes and
 the slide, where the mods live and where an effect after the voice cannot reach. Take dEVILish
@@ -61,7 +61,7 @@ MODULE = Module(
         Param(b"SLID", 0, 128, active=True, formatter=_PLAIN,
               doc="slide time, 60 ms (0, the 303) to 360 ms"),
         Param(b"ADEC", 50, 128, active=True, formatter=_PLAIN,
-              doc="filter decay on accented notes, 30 ms to 3 s; 50 is the 303's fixed ~200 ms"),
+              doc="filter decay on accented notes, 30 ms to 3 s (the MEG circuit); 50 is the 303's 200 ms"),
         # ---- page 2 ------------------------------------------------------------
         Param(b"SATK", 0, 128, active=True, formatter=_PLAIN,
               doc="soft attack on the volume of unaccented notes: 0 none, 1 to 127 is 0.3 to 30 ms"),

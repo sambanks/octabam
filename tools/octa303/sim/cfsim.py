@@ -38,6 +38,7 @@ CODE_BASE, TEXT_DATA, DATA_BASE, BSS_BASE = 0x50000000, 0x51000000, 0x52000000, 
 class CPU:
     def __init__(self, src, mem=None, hooks=None, defsyms=None):
         self.mem = mem or Mem(); self.hooks = hooks or {}
+        self.via_jmp = False        # a hook reached by jmp finds its return address at a7 and the arguments above it
         self.d = [0] * 8; self.a = [0] * 8; self.N = self.Z = self.V = self.C = 0
         self.consts = dict(defsyms or {}); self.labels = {}; self.prog = []; self.icount = 0; self.prof = None
         self.lines = self._expand(src.splitlines())
@@ -198,7 +199,7 @@ class CPU:
                 if not (b in ('add', 'sub') and False): bad('immediate ALU op only into a register')
             if b == 'eor' and k[0] not in ('d', 'imm'): bad('eor source must be Dn')
             if b == 'eor' and k[0] == 'imm' and k[1] != 'd': bad('eori only into Dn')
-            if b in ('neg', 'not', 'ext', 'swap') and k[0] != 'd': bad('%s only on Dn' % b)
+            if b in ('neg', 'not', 'ext', 'swap', 'ff1') and k[0] != 'd': bad('%s only on Dn' % b)
             if b in ('muls', 'mulu', 'divs', 'divu', 'rems', 'remu'):
                 if sz == 'l' and k[0] not in ('d', 'ind', 'post', 'pre', 'd16'): bad('mul/div.l source: Dn,(An),(An)+,-(An),d16(An)')
                 if sz == 'w' and k[0] in ('idx', 'abs', 'pcrel'): bad('mul/div.w source mode')
@@ -293,7 +294,7 @@ class CPU:
                 e = self.ea(ops[0])
                 tgt = e[1] if e[0] == 'abs' else self.addr(e)
                 if b == 'bsr': tgt = self.consts[ops[0]]
-                if tgt in self.hooks: self.hooks[tgt](self); continue
+                if tgt in self.hooks: self.via_jmp = False; self.hooks[tgt](self); continue
                 if CODE_BASE <= tgt < TEXT_DATA:
                     self.a[7] = (self.a[7] - 4) & M32; self.mem.w(self.a[7], 'l', CODE_BASE + 2 * pc)
                     pc = (tgt - CODE_BASE) // 2; continue
@@ -301,7 +302,7 @@ class CPU:
             if b == 'jmp':
                 e = self.ea(ops[0]); tgt = e[1] if e[0] == 'abs' else self.addr(e)
                 if tgt in self.hooks:
-                    self.hooks[tgt](self); b = 'rts'
+                    self.via_jmp = True; self.hooks[tgt](self); b = 'rts'
                 elif CODE_BASE <= tgt < TEXT_DATA: pc = (tgt - CODE_BASE) // 2; continue
                 else: raise RuntimeError('jmp to unmapped %#x' % tgt)
             if b == 'rts':
@@ -346,6 +347,9 @@ class CPU:
             r = ~g(ops[0], sz) & MASK[sz]; self.nz(r, sz); self.V = self.C = 0; p(ops[0], sz, r)
         elif b == 'clr':
             p(ops[0], sz, 0); self.N = 0; self.Z = 1; self.V = self.C = 0
+        elif b == 'ff1':                                  # ISA_C (MCF54455): the leading zeros, 32 for 0
+            r = self.reg(ops[0])[1]; v = self.d[r]; n = 32 - v.bit_length()
+            self.d[r] = n; self.nz(v, 'l'); self.V = self.C = 0   # CFPRM: N and Z from the SOURCE
         elif b == 'swap':
             r = self.reg(ops[0])[1]; v = self.d[r]; v = ((v << 16) | (v >> 16)) & M32; self.d[r] = v; self.nz(v, 'l'); self.V = self.C = 0
         elif b == 'ext':

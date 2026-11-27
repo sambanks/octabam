@@ -1,6 +1,7 @@
 **OCTA-303** is a circuit-modelled Roland TB-303 synthesizer machine (one
 voice per track). It requires no sample, replaces no stock effect, and is
-fitted to recordings of a real TB-303 (Din Sync's x0xb0x reference set).
+based on the TB-303's circuit (Roland's service notes) and fitted to recordings of two real
+TB-303s (Din Sync's x0xb0x reference set, tinyloops' accents, rolandclan's one-shots).
 
 ## Limit
 
@@ -33,19 +34,20 @@ with TUNE at C3, CUT/RES/ENV/DEC at 64, and ACC at 0.
 | SRC | CUT | filter cutoff (TB-303 CUTOFF FREQ law) |
 | SRC | RES | filter resonance |
 | SRC | ENV | envelope modulation depth |
-| SRC | DEC | decay time, ~0.13–2.4 s |
+| SRC | DEC | decay time, ~0.16–2.5 s |
 | SRC | ACC | accent amount, applied on steps with an ACC lock |
-| SETUP | WAVE | SAW, SQR, SAW+D, SQR+D (+D adds a distortion pedal after the VCA) |
+| SETUP | WAVE | SAW, SQR, SAW+D, SQR+D, RSAW, RSQR, RSAWD, RSQRD (+D adds a distortion pedal after the VCA; R: the filter as Roland's factory trims it, +0.575 octave; without R, Din Sync's 303) |
 | SETUP | GATE | OFF lets the AMP page shape the note; 303 uses the TB-303 gate (3.5 of 6 clocks), tied into slides |
 | SETUP | FINE | fine tune, ±½ semitone |
 | SETUP | SLID | slide time (0 matches the TB-303) |
-| SETUP | DRIV | output drive into a soft ceiling, up to +18 dB |
-| SETUP | ACCV | accent loudness (64 matches the calibrated TB-303) |
+| SETUP | DRIV | the 303's VOLUME turned past the recording's level: up to +10 dB into the output mixer's soft saturation (0 = as recorded) |
+| SETUP | ACCV | accent loudness (64 = the 303's own, from its circuit) |
 
 ## Playing it
 
 - **Accent:** parameter-lock ACC on the steps you want accented; the ACC knob
-  sets the accent amount.
+  sets the accent amount. The accent and the filter envelope follow the TB-303's circuit: accents in a row
+  build up as on the 303 (C13 keeps some charge).
 - **Slide:** place a trigless trig or trigless lock ([FUNC] + [TRIG]) on the
   next step. As soon as you place it, it copies the note from the previous
   trig or slide as its TUNE lock, tying the note as on a TB-303. Hold the step

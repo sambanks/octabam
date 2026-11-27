@@ -74,6 +74,7 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`morph`](morph/README.md) | MORPH (track + UP / DOWN: the scene morph by itself, saved with the project) with STORE and the stock effects. |
 | [`mute-modes`](mute-modes/README.md) | stock effects with MUTE_MODES: PERSONALIZE > MUTE MODE (OT, OTFX, OTFX-T, DT-T). |
 | [`octa303`](octa303/README.md) | the OCTA-303 machine (a circuit-modelled TB-303 voice on the ColdFire) with the stock effects. |
+| [`octa303-seam`](octa303-seam/README.md) | the hybrid OCTA-303 (OCTA303 SEAM: FM, filter, VCA, MUFF, DIST and output on the DSP) with dEVILish and the stock effects but DJ EQ, COMPRESSOR, LO-FI and PHASER. |
 | [`octatrick`](octatrick/README.md) | SYNTH MACHINE + SCALE QUANTIZER + DIRECT JUMP + TUNER + USB (20 channels out, 4 in onto A-D) on the stock effects less SPATIALIZER. |
 | [`page-loop`](page-loop/README.md) | stock effects with PAGE LOOP: loop one page of one track, in time. |
 | [`pattern-mute`](pattern-mute/README.md) | smoke: PATTERN MUTE alone, with STORE (pmute.work) |
