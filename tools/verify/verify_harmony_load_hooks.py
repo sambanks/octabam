@@ -30,8 +30,12 @@ def check():
             wrapper = sym['store_loadall' if mask is None else 'store_loadmask']
             assert bytes(u.mem_read(native,6)) == b'\x4e\xf9'+struct.pack('>I',wrapper)
             calls = []; banks = []; clients = []
-            other = {sym[name]:name for name in sym if name.startswith(('plk_st_load','kits_st_load','scn_st_load'))
-                     and ('loadall' if mask is None else 'loadmask') in name}
+            # Run the real Harmony subscriber. Other STORE clients own their
+            # own files and devices, outside this load-dispatch fixture.
+            event = 'loadall' if mask is None else 'loadmask'
+            suffixes = (f'_st_{event}_pre', f'_st_{event}_post')
+            other = {addr: name for name, addr in sym.items()
+                     if name.endswith(suffixes) and not name.startswith('mhc_')}
             def observe(u, address, size, data):
                 sp = u.reg_read(UC_M68K_REG_A7)
                 if address == native:
