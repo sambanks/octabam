@@ -98,7 +98,6 @@ def project(dest, src, remix, select_names, machines):
             plan["layouts"].append({"slot": slot, "bank": M.BANKS[b - 1], "pattern": p, "program": prog,
                                     "name": name, "kind": "machine", "layout": {}})
         machine_slot(pdir, plan, slot, name, sig, tracks)
-    M.stamp_text(pdir, {"MIDI_CLOCK_SEND": 1}, {})      # ot_v06.py diskread needs the unit sending clock
     P.write_stored(pdir)
     plan_path.write_text(json.dumps(plan, indent=1))
     return pdir, plan

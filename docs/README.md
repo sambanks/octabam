@@ -46,6 +46,11 @@ Individual modules, remixes, and tools also have their own READMEs at
 | [contributing/HARDWARE_MATRIX.md](contributing/HARDWARE_MATRIX.md) | Running a remix across multiple configurations over USB |
 | [contributing/HARDWARE_SUITE.md](contributing/HARDWARE_SUITE.md) | Automated hardware test suite for the `octabam` remix |
 | [contributing/HARDWARE_MANUAL.md](contributing/HARDWARE_MANUAL.md) | Manual hardware checks: front panel, listening tests, CF card, and MIDI controllers |
+| [contributing/HARDWARE_TESTING.md](contributing/HARDWARE_TESTING.md) | testing a remix on your own Octatrack, and recovering from a failure |
+| [contributing/HARDWARE_MATRIX.md](contributing/HARDWARE_MATRIX.md) | running one remix in many configurations over one USB cable |
+| [contributing/HARDWARE_SUITE.md](contributing/HARDWARE_SUITE.md) | the `octabam` remix's automated hardware suite |
+| [contributing/HARDWARE_MANUAL.md](contributing/HARDWARE_MANUAL.md) | the checks done by hand: panel gestures, listening, the card, MIDI controllers |
+| [contributing/HARDWARE_V06.md](contributing/HARDWARE_V06.md) | the v0.6 unit checks: what ran over the cable, and a checklist for the rest |
 
 ## Specs
 

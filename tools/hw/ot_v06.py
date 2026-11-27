@@ -196,12 +196,19 @@ def suite(a):
             ok = False
             break
         label = f"{a.label}-{proj}"
-        rc = sh(os.path.join(HERE, "ot_matrix.py"), "run", projects[proj]["dir"], label)
-        with open(os.path.join(ROOT, "out", "hw", "matrix", label, "report.json")) as f:
-            report = json.load(f)
         with open(os.path.join(projects[proj]["dir"], "OCTABAM_MATRIX.json")) as f:
             plan = json.load(f)
+        # BASE twice: the first START after a project load plays before the stimulus samples are in (BASE read
+        # -135 dBFS as the first layout of a load, -33 dBFS as the second), and BASE is every layout's baseline
+        only = f"0,0-{len(plan['layouts']) - 1}"
+        rc = sh(os.path.join(HERE, "ot_matrix.py"), "run", projects[proj]["dir"], label, "--only", only)
+        with open(os.path.join(ROOT, "out", "hw", "matrix", label, "report.json")) as f:
+            report = json.load(f)
         rows = judge_rows(report["results"], plan)
+        seen = {}
+        for n, w in rows:
+            seen[n] = w                  # a repeated BASE keeps its last row
+        rows = list(seen.items())
         step["layouts"] = {n: w or "ok" for n, w in rows}
         step["ran"] = len(rows)
         step["planned"] = len(plan["layouts"])
@@ -215,7 +222,12 @@ def suite(a):
                 print("a fatal flag: stopped")
                 break
     else:
-        summary["diskread"], good = diskread(None, a.reads)
+        # the DISK MODE read needs the unit sending clock: its own project, so the matrix projects keep CLOCK SEND off
+        if sh(os.path.join(HERE, "ot_card.py"), "load", projects["V06_DISK"]["dir"], "--name", PROJECT):
+            summary["diskread"], good = dict(pass_=False, why="loading V06_DISK failed"), False
+            ok = False
+        else:
+            summary["diskread"], good = diskread(None, a.reads)
         ok &= good
         rows, good = switch(names, a.cycles)
         summary["switch"] = rows

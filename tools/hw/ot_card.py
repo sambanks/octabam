@@ -296,7 +296,7 @@ def cmd_copy(a):
 IMAGE_NAME_SCAN = (0x40ae0000, 0x40b70000)       # the resident runtime (RMT_TRACE, LOAD METER, DLPUMP's cells are in it)
 
 
-def running_image(u):
+def running_image(u, want=None):
     """The distinct `OCTABAM…` names in the resident runtime, sorted: the running image's own (`<REMIX> <BUILD>`, REMIX
     SWITCH's OSW_SELF), and any other name the range happens to hold. `one_name` says whether that is unambiguous.
     The ring fingerprint is the same for two builds that differ only in DSP code; this tells them apart (20 Nov 2026).
@@ -316,6 +316,8 @@ def running_image(u):
     # 24 characters after OCTABAM: a file name such as `OCTABAM-VRB 05.RMX` must be read whole, or a capture cut before
     # `.RMX` would pass the filter as a name of its own.
     found = {m.group().decode() for m in re.finditer(rb"OCTABAM[ -~]{0,24}", buf)}
+    if want and want.encode() in buf:      # an image whose name does not start with OCTABAM (V06-RIG)
+        found.add(want)
     return sorted(n for n in found if ".RMX" not in n.upper() and len(n) > len("OCTABAM"))
 
 
@@ -379,7 +381,7 @@ def cmd_boot(a):
     after = u.fingerprint()
     print(f"the DSP's frame count advances {t:.1f} s after the unit returned")
     want = a.name[:-4] if a.name.endswith(".RMX") else a.name
-    names = running_image(u)
+    names = running_image(u, want)
     got = one_name(names)
     if got is None and want in names:
         # several names in the range, the one asked for among them: not proof, not a failure
