@@ -198,6 +198,38 @@ def wait_running(u, timeout=90.0):
     return None
 
 
+PARK_PROGRAM = 112      # bank H (8 banks a MIDI program change reaches, 16 programs each): no project of ours has a layout there
+
+
+def park_on_unused_bank(u, channel=1, program=PARK_PROGRAM):
+    """Leaving DISK MODE reloads every bank but the current one (docs/firmware/PARTS.md section 8: mask 0xfffb, the
+    power-up's path too), so a bank edited in the files that was current when the unit entered DISK MODE keeps its old
+    RAM (27 Nov 2026: pattern A01 read trigs on all eight tracks after a load of a project with T1 only; the panel's
+    own PROJECT > LOAD, which loads all banks, showed T1 only). A program change to a bank the project does not use,
+    sent before COMMAND 1, makes the reload read the edited banks. Needs MIDI program change receive on in the project
+    that is loaded now; without it the unit stays where it is and this says so."""
+    try:
+        import ot_midi
+        out = ot_midi.Out("Elektron Octatrack DPS-1")
+        out.send([0xC0 | (channel - 1), program & 0x7f])
+    except Exception as e:  # noqa: BLE001
+        print(f"could not send a program change to park the unit on an unused bank ({e}): a bank that is current will keep its old content")
+        return False
+    want = (program // 16, program % 16)
+    t0 = time.monotonic()
+    while time.monotonic() - t0 < 5.0:
+        try:
+            b = ev.peek(u.peek1, ev.BANK_ADDR, 2)
+            if (b[0], b[1]) == want:
+                time.sleep(1.0)
+                return True
+        except (SystemExit, Exception):  # noqa: BLE001
+            pass
+        time.sleep(0.1)
+    print("the unit did not move to bank H (program change receive off in the loaded project?): a bank that is current will keep its old content")
+    return False
+
+
 def cmd_load(a):
     src = os.path.abspath(a.project)
     if not os.path.isfile(os.path.join(src, "project.work")):
@@ -206,6 +238,7 @@ def cmd_load(a):
         sys.exit("--name is a directory name under PRESETS")
     u = Unit()
     head0 = ev.Events(u.ctrl).head()
+    park_on_unused_bank(u)
     enter_disk(u)
     # Copy beside the old project, compare, and only then swap: a copy that fails partway leaves the old one whole.
     dst = os.path.join(CARD, "PRESETS", a.name)
