@@ -1066,6 +1066,7 @@ def main():
                                   "scope", "scope-alone",  # SCOPE and SCOPE without TUNER: ColdFire, no DSP words
                                   "cxosc", "cxosc-core",
                                   "screen", "screen-usb")},  # CX OSC (+ CORE handoff); ColdFire, no DSP words
+             "v06-rig": ("PLATE REV",),   # the stock effects but PLATE REV
              "trackpatterns": (),   # pgstath's ColdFire module on the stock effects, no DSP words
              "trackpatterns-core": (),   # TRACK PATTERNS on the core modules and the 14 stock effects, which gives up nothing
              "free-loop": (),   # FREE LOOP: ColdFire, no DSP words, on the 14 stock effects
