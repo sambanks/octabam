@@ -9800,7 +9800,7 @@ scale_ticks:
         .equ    PS_PREV, 86
         .equ    PS_BNEXT, 88
         .equ    PS_BPREV, 89
-        .equ    FL_CLIENT, 5            | STORE's CLIENT_IDS
+| FL_CLIENT, the module's number in STORE's CLIENT_IDS, is manifest.py's defsym.
 
 fl_cc:
         movea.l 4(%sp),%a0

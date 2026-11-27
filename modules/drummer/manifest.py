@@ -33,10 +33,12 @@ DETOURS = (
 
 
 def drummer_inc(modules, remix=None):
-    """HAVE_PAGELOCKS: KIT BALANCE takes PAGES' locks (pages/manifest.py: its locks unit linked)."""
+    """HAVE_PAGELOCKS: KIT BALANCE takes PAGES' locks (pages/manifest.py: its locks unit linked).
+    DR_CLIENT: the module's number in STORE's refusal registry (store/manifest.py CLIENT_IDS)."""
     pages = runpy.run_path(str(Path(__file__).parents[1] / "pages/manifest.py"))
     have = any(entry[0] == "DRUMMER" for entry in pages["lock_clients"](modules))
-    return f".set HAVE_PAGELOCKS, {int(have)}\n"
+    ids = runpy.run_path(str(Path(__file__).parents[1] / "store/manifest.py"))["CLIENT_IDS"]
+    return f".set HAVE_PAGELOCKS, {int(have)}\n.set DR_CLIENT, {ids['DRUMMER']}\n"
 
 
 MODULE = Module(
