@@ -149,14 +149,26 @@ def who(m) -> tuple[str, str | None, tuple[str, str] | None]:
     return (name, profile, repo)
 
 
+def people(m) -> list[tuple[str, str | None]]:
+    """Everyone credited on a module: the author, then each coauthor, as (name, profile link)."""
+    name, url, _ = who(m)
+    return [(name, url)] + [(n, u) for n, u in m.coauthors]
+
+
+def _link(name: str, url: str | None) -> str:
+    return f"[{name}]({url})" if url else name
+
+
 def _author(m) -> str:
     if m.is_stock:
         return "stock"
     name, url, repo = who(m)
-    text = f"[{name}]({url})" if url else name
+    text = _link(name, url)
     if repo:
         verb = "ported from" if "ported here" in (m.author or "") else "from"
         text += f", {verb} [{repo[0]}]({repo[1]})"
+    if m.coauthors:
+        text += ("; " if repo else ", ") + ", ".join(_link(n, u) for n, u in m.coauthors)
     return text
 
 
@@ -300,10 +312,11 @@ def module_page(m, mods, book) -> str:
     """One page per contributed module: the usage fragment (docs/site/usage/<name>.md) when one is written,
     else the manifest's line, then where the module is and its facts."""
     fragment = OUT.parent / pathlib.Path("usage") / f"{m.name}.md"
-    name, url, _ = who(m)
-    byline = html.escape(name)
-    if url:
-        byline = f'<a href="{html.escape(url)}">{byline}</a>'
+    names = []
+    for name, url in people(m):
+        n = html.escape(name)
+        names.append(f'<a href="{html.escape(url)}">{n}</a>' if url else n)
+    byline = ", ".join(names)
     lines = ["---", "not_in_nav: true", "---", "", f"# {_label(m)}", "", f'<p class="byline">By {byline}</p>', ""]
     import gen_manual
     import release
