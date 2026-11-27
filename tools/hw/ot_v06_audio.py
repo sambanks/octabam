@@ -55,7 +55,7 @@ class Rig:
         self.clock.pc_wait(1, prog, 0.8)
         time.sleep(settle)
 
-    def play(self, prog, secs, events=(), tail=0.0, stops=1):
+    def play(self, prog, secs, events=(), tail=0.0, stops=1, stop_gap=0.05):
         """Program change, START, `events` as (seconds after START, callable), STOP after `secs`, then `tail` seconds.
         Returns (x, t_stop): the audio from START and the sample index of STOP."""
         self.prepare(prog)
@@ -68,9 +68,10 @@ class Rig:
                 pend.pop(0)[1]()
             time.sleep(0.005)
         n_stop = int((time.monotonic() - t0) * FS)
-        for _ in range(stops):
+        for k in range(stops):
             self.clock.stop()
-            time.sleep(0.05)
+            if k < stops - 1:
+                time.sleep(stop_gap)
         time.sleep(tail)
         x = self.take()
         return x, n_stop
@@ -122,6 +123,76 @@ def cmd_wave_stop(a):
         rig.close()
 
 
+def impulse(x, t, after=1.0):
+    """Sample index of the loudest sample of track t in the second after `after`: one impulse of the stimulus."""
+    c0, c1 = track_cols(t)
+    seg = np.abs(x[int(after * FS):int((after + 1.0) * FS), c0:c1 + 1]).max(axis=1)
+    return int(after * FS) + int(seg.argmax())
+
+
+def win(x, t, i, a_ms, b_ms):
+    """RMS dBFS of track t from a_ms to b_ms after sample i."""
+    c0, c1 = track_cols(t)
+    s = x[i + int(a_ms * FS / 1000):i + int(b_ms * FS / 1000), c0:c1 + 1]
+    return db(np.sqrt((s ** 2).mean())) if s.size else -240.0
+
+
+def cmd_verb(a):
+    """#1234 on octabam-verbs (project V06_VRB; T6 plays the impulses): the stop kill, AMNT's fixed dry, PRE at SIZE 127."""
+    rig = Rig()
+    try:
+        rig.play(1, 3.0, tail=0.5)                      # the first START after a load is silent
+        print("-- STOP kill: the tail on T6 after a single STOP, and after STOP, STOP")
+        for stops, gap in ((1, 0.0), (2, 0.05), (2, 0.3)):
+            x, n = rig.play(1, 5.0, tail=3.0, stops=stops, stop_gap=gap)
+            ts = n / FS
+            print(f"  STOP x{stops} gap {gap:.2f} s: T6 rms {level(x, 6, ts + 0.3, ts + 1.0):7.1f} (0.3-1.0 s)  "
+                  f"{level(x, 6, ts + 1.0, ts + 2.0):7.1f} (1-2 s)  {level(x, 6, ts + 2.0, ts + 3.0):7.1f} (2-3 s)", flush=True)
+        print("-- AMNT: the dry hit (peak within 1 ms) and the wet (rms 30-250 ms after it) on T6")
+        base = None
+        for v in (0, 32, 64, 96, 127):
+            x, n = rig.play(1, 4.0, events=[(0.05, lambda v=v: rig.clock.cc(6, 40, v))], tail=0.2)
+            i = impulse(x, 6, 1.0)
+            dry = db(np.abs(x[i - 44:i + 44, 10:12]).max())
+            wet = win(x, 6, i, 30, 250)
+            base = dry if base is None else base
+            print(f"  AMNT {v:3d}: dry peak {dry:7.1f} dBFS ({dry - base:+5.1f} against AMNT 0)  wet rms {wet:7.1f} dBFS", flush=True)
+        print("-- PRE at SIZE 127: energy after the dry hit, relative to its peak (program 1: PRE 0; program 2: PRE 127)")
+        for prog in (1, 2):
+            x, n = rig.play(prog, 4.0, tail=0.2)
+            i = impulse(x, 6, 1.0)
+            dry = db(np.abs(x[i - 44:i + 44, 10:12]).max())
+            ws = [(a_, b_, win(x, 6, i, a_, b_) - dry) for a_, b_ in ((5, 20), (20, 50), (50, 80), (80, 120))]
+            print(f"  program {prog}: " + "  ".join(f"{a_}-{b_} ms {r:+6.1f} dB" for a_, b_, r in ws), flush=True)
+    finally:
+        rig.close()
+
+
+def cmd_cx_fold(a):
+    """#1263: FOLD moved with DEC at HOLD clicked. T1 is a CX OSC track (project V06_RIG, program 17, image V06-RIG): the click
+    count on its own channels with FOLD static (0 and 100) and swept 0 to 127 over six seconds."""
+    import ot_matrix as M
+    rig = Rig()
+    try:
+        rig.play(a.prog, 3.0, tail=0.5)                 # the first START after a load is silent
+        cc = lambda v: (lambda: rig.clock.cc(1, 20, v))
+        sweep = [(0.1 + k * 0.045, cc(int(127 * k / 119))) for k in range(120)]
+        out = []
+        for label, ev in (("FOLD 0 static", [(0.05, cc(0))]), ("FOLD 100 static", [(0.05, cc(100))]), ("FOLD 0..127 swept", sweep),
+                          ("FOLD 100 static again", [(0.05, cc(100))])):
+            x, n = rig.play(a.prog, 6.0, events=ev, tail=0.3)
+            seg = x[int(1.0 * FS):int(n), 0:2]
+            ce = M.click_events(seg, FS)
+            e, b, nb = (sum(c[i] for c in ce) for i in range(3))
+            row = (label, level(x, 1, 1.0, n / FS), M.hf_power_db(seg, FS), e, b, nb)
+            out.append(row)
+            print(f"{label:24s} T1 rms {row[1]:7.1f} dBFS  hf {row[2]:7.1f} dB  click events {e:4d}  blocks with one {b:3d} of {nb}", flush=True)
+        static = max(out[0][3], out[1][3], out[3][3])
+        print(f"swept {out[2][3]} events against the static maximum {static}; FOLD moved the audio: hf {out[0][2]:.1f} to {out[1][2]:.1f} dB")
+    finally:
+        rig.close()
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -129,8 +200,11 @@ def main():
     p.add_argument("prog", type=int)
     p.add_argument("--secs", type=float, default=6.0)
     sub.add_parser("wave-stop")
+    sub.add_parser("verb")
+    p = sub.add_parser("cx-fold")
+    p.add_argument("--prog", type=int, default=17)
     a = ap.parse_args()
-    {"tracks": cmd_tracks, "wave-stop": cmd_wave_stop}[a.cmd](a)
+    {"tracks": cmd_tracks, "wave-stop": cmd_wave_stop, "cx-fold": cmd_cx_fold, "verb": cmd_verb}[a.cmd](a)
 
 
 if __name__ == "__main__":

@@ -39,9 +39,14 @@ SIG_OFF = 0x3C
 THRU = 2                                  # machine type byte: STATIC 0, FLEX 1, THRU 2 (inferred)
 SIGS = {"OCTA303": (0x54, 0x42, 1), "WAVE": (0x57, 0x56, 1), "CX OSC": (0x43, 0x58, 1)}
 STEPS = (1, 5, 9, 13)
+# CX OSC's seeds (modules/cxosc/machine.s fm_defaults), INDX raised from 0 so the tone has FM in it; DEC 127 is HOLD
+SEEDS = {"CX": {"playback": (64, 25, 48, 64, 0, 0), "setup": (0, 0, 127, 64, 0, 64)}}
 
 
-def machine_slot(pdir, plan, slot, name, sig, tracks, steps=STEPS):
+PB_OFF, SETUP_OFF = 0x30, 0x1E0            # the track's PLAYBACK and SETUP bytes in the Part (RAM structure), 30 bytes a track
+
+
+def machine_slot(pdir, plan, slot, name, sig, tracks, steps=STEPS, playback=None, setup=None):
     """Rewrite slot `slot` of the project as `name`: tracks (0-based) become FLEX tracks signed `sig`, and the
     slot's pattern holds a trig on `steps` of those tracks and nothing else. Updates the plan entry."""
     bank, pat, prog = M._program(slot)
@@ -57,6 +62,10 @@ def machine_slot(pdir, plan, slot, name, sig, tracks, steps=STEPS):
                 data[off + P.MTYPE_OFF + t] = 1
                 at = off + 9 + SIG_OFF + 30 * t
                 data[at:at + 3] = bytes(sig)
+                if playback:
+                    data[off + 9 + PB_OFF + 30 * t:off + 9 + PB_OFF + 30 * t + 6] = bytes(playback)
+                if setup:
+                    data[off + 9 + SETUP_OFF + 30 * t:off + 9 + SETUP_OFF + 30 * t + 6] = bytes(setup)
         for t in range(8):
             o = P.trac_off(pat - 1, t)
             data[o:o + 64] = bytes(64)
@@ -97,7 +106,8 @@ def project(dest, src, remix, select_names, machines):
             b, p, prog = M._program(slot)
             plan["layouts"].append({"slot": slot, "bank": M.BANKS[b - 1], "pattern": p, "program": prog,
                                     "name": name, "kind": "machine", "layout": {}})
-        machine_slot(pdir, plan, slot, name, sig, tracks)
+        seeds = SEEDS.get(name.split()[0 if name.startswith("CX") else 0], {})
+        machine_slot(pdir, plan, slot, name, sig, tracks, **seeds)
     P.write_stored(pdir)
     plan_path.write_text(json.dumps(plan, indent=1))
     return pdir, plan
