@@ -30,7 +30,7 @@ Every audio check plays once first and discards it: the first START after a proj
 
 ## Check by hand
 
-The rows below the first six are what the cable runs above do not cover: the panel gestures, and the parts listed as not shown.
+What the cable runs above did not cover: the panel gestures, and the parts of the cable rows marked not shown.
 
 ### #1270 OCTA303 v10.0 and OCTA303 SEAM (image: `octabam`; SEAM only in `test/octa303-seam`)
 
@@ -41,37 +41,23 @@ The rows below the first six are what the cable runs above do not cover: the pan
 - [ ] A FLEX track on a sample named `TB303*` now plays its sample; the OCTA-303 machine is the way in.
 - [ ] Six tracks of OCTA-303: the ColdFire share in LOAD METER (v8.2 to v10.0 do less work for the same output).
 
-### #1263 CX OSC (image: `cxosc`, or `V06-RIG`)
+### #1234 VERBERATION, what the cable did not show (image: `octabam-verbs`)
 
-- [ ] DEC at HOLD (127), a note held, FOLD (PLAYBACK E) moved: no click or dropout.
-- [ ] FOLD automated across frame-aligned trigs: no click.
-- [ ] Six tracks with MOD morph at 0: ColdFire share (the PR reports 71.4 % mean, 73.6 % max); above 0 has not been measured.
-
-### #1232 WAVE (image: `octabam`)
-
-- [ ] A WAVE track with AMP at HOLD INF and REL INF, playing: STOP ends the voices (a single STOP; a double STOP).
-- [ ] PLAY after it starts cold.
-- [ ] A live note played with the transport already stopped is not cut.
-
-### #1234 VERBERATION (image: `octabam-verbs`)
-
-- [ ] STOP, STOP cuts the tail, as on the stock reverbs.
-- [ ] AMNT: 0 to 64 the wet rises over the dry; 64 to 127 the dry fades out. Defaults 35, 41, 64 by mode.
-- [ ] PRE works at every SIZE, including SIZE 127, and glides when turned.
+- [ ] STOP, STOP cuts the tail, as on the stock reverbs (a single MIDI STOP already gives silence on the cable, so a panel double STOP is the test).
+- [ ] PRE works at every SIZE, including SIZE 127, and glides when turned (listen, or a single-click stimulus).
 - [ ] MODE is an algorithm: ROOM early reflections, PLATE unchanged, HALL modulated, 80S gates on each hit.
 - [ ] Four VERBERATION on a core's FX2 slots plus four MODULATION on its FX1 slots: DSP busy under 95 % (the PR says about 94.6 %).
+- [ ] After STOP, STOP, a DC offset of about -77 dBFS is left on every track (seen on the cable): confirm it is inaudible.
 
-### #1219 KEYBUS and VCA160's KEY (image: `V06-RIG` or `test/vca160`; VCA160 is not in `octabam`)
+### #1219 KEYBUS, what the cable did not show
 
-- [ ] VCA160 on FX1 or FX2 with KEY set to a track T1 to T8: the gain follows that track's loudness.
 - [ ] CHARACTER's KEY and VOID still read the peak.
 - [ ] LOAD METER: KEYBUS adds about 11 cycles a sample per core.
 
-### #1266 MIDI LOOPBACK with MIDI SCENES (image: `octabam`, `octabam-verbs`)
+### #1266 MIDI LOOPBACK, what the cable did not show (image: `octabam`, `octabam-verbs`)
 
-- [ ] A MIDI track set to INT (CHAN on its NOTE SETUP: EXT, INT or BOTH per Part): with a MIDI monitor on DIN and USB, neither its notes nor its scene CCs go out.
-- [ ] EXT: both go out. BOTH: both go out and arrive internally.
-- [ ] Scene CCs arrive before the note-on, locked or not.
+- [ ] A MIDI track set to INT: its notes reach the Octatrack's own receiver (an audio track listening on the track's channel plays them).
+- [ ] BOTH: out and internal at once.
 
 ### #1252 TEMPLATES FX tab and #1251 KIT templates (image: `octabam`)
 
