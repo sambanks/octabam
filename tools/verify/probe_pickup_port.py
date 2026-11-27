@@ -123,6 +123,8 @@ def main():
     ap.add_argument("--qrec", type=int, default=None, help="T1's QREC, raw: -1 OFF (stock's default), 0 PLEN, "
                     "1-16 the step ladder 1 2 3 4 6 8 12 16 24 32 48 64 96 128 192 256")
     ap.add_argument("--qpl", type=int, default=None, help="T1's QPL, raw, as --qrec")
+    ap.add_argument("--src3", type=int, default=0, help="T1's SRC3, raw: 0 '-' (the default here), 1-8 T1-T8, "
+                    "9 MAIN (a fresh project's: an overdub then records the loop again, through MAIN), 10 CUE")
     ap.add_argument("--sine", type=int, default=0, metavar="PERIOD",
                     help="feed a sine of PERIOD samples (256 divides 2 bars at 128 BPM) and report its residual")
     ap.add_argument("--sine-to-end", action="store_true",
@@ -149,7 +151,7 @@ def main():
                                cwd=ROOT, capture_output=True, text=True)
             if r.returncode:
                 sys.exit(f"probe_pickup_port: ot_fresh failed:\n{(r.stdout + r.stderr)[-1200:]}")
-        setup = [(f, v) for f, v in (("QREC", a.qrec), ("QPL", a.qpl)) if v is not None]
+        setup = [(f, v) for f, v in (("QREC", a.qrec), ("QPL", a.qpl), ("SRC3", a.src3)) if v is not None]
         fixture(fresh / "image/PROJECT 000000", out / "proj", a.bpm, a.trig, setup)
         r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(out / "proj"), "OCTABAM", "PUM",
                             "--tree", str(out / "tree"), "--out", str(card)], cwd=ROOT, capture_output=True, text=True)

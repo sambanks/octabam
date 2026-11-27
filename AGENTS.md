@@ -272,6 +272,8 @@ moment it costs real work, and add its line here.
 
 - [A `--live-script` run posts no main level, so every voice is silent](docs/contributing/TRAPS.md#trap-live-script-level) — turn the volume knob in the script (`<ms> pot 200`) before anything plays.
 
+- [A fresh Part's SRC3 is MAIN: a Pickup overdub records its own loop again](docs/contributing/TRAPS.md#trap-fresh-src3) — set SRC3 in a recorder fixture; the loop's level grew 1.71× a pass with the input silent.
+
 ## How docs are written here
 
 Nothing reaches `main` without CI's full gates, so a doc never has to prove

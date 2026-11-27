@@ -2004,3 +2004,17 @@ the volume knob (`<ms> pot <0..255>`), which posts the same command, before
 anything plays. Check `TX0 non-zero per RING WORD` in the port's report before
 reading a silent `--audio-out`.
 **Gate:** `tools/verify/probe_pickup_port.py` requires MAIN to carry the loop.
+
+<a id="trap-fresh-src3"></a>
+
+### A fresh Part's SRC3 is MAIN: a Pickup overdub records its own loop again
+
+**A PART THE FIRMWARE MAKES HAS RECORDING SETUP SRC3 = MAIN (RAW 9), NOT
+THE DESCRIPTOR'S `-`.** A Pickup overdubbing on such a Part records MAIN,
+which carries the loop, on top of the loop. Under the port its level grew 1.71×
+a pass with the input silent, and every restart stepped by the growth: it read
+as an overdub gain fault. With SRC3 `-` the overdub sums at unity (the level
+grows by one input a pass). Fix: a recorder fixture sets SRC3 explicitly
+(`PARAM_PAGES.md`, entry 8, says a fresh Part draws TRIG ONE and SRC3 MAIN).
+**Gate:** `tools/verify/probe_pickup_port.py` sets SRC3 `-` unless `--src3`
+says otherwise.
