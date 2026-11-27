@@ -22,10 +22,17 @@ scripts/m68k-toolchain.sh --check "$PREFIX" \
 # shellcheck disable=SC2206
 pkgs+=(${EXTRA_PACKAGES:-})
 apt_sources=()
-if [[ ${RUNNER_ENVIRONMENT:-} == github-hosted && -f /etc/apt/sources.list.d/ubuntu.sources ]]; then
-  # All required packages come from Ubuntu. An unrelated feed on the runner
-  # can return 403 and prevent apt from installing even these archive packages.
-  apt_sources=(-o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=-)
+if [[ ${RUNNER_ENVIRONMENT:-} == github-hosted ]]; then
+  # Runner images use different files for their Ubuntu mirrors. Keep the
+  # default sources.list and every source except the unrelated Microsoft feed.
+  apt_parts=$(mktemp -d)
+  trap 'rm -r -- "$apt_parts"' EXIT
+  chmod 755 "$apt_parts"
+  for source in /etc/apt/sources.list.d/*.{list,sources}; do
+    [[ -f "$source" ]] || continue
+    grep -qF packages.microsoft.com "$source" || ln -s "$source" "$apt_parts/"
+  done
+  apt_sources=(-o "Dir::Etc::sourceparts=$apt_parts")
 fi
 $SUDO apt-get "${apt_sources[@]}" update
 $SUDO apt-get "${apt_sources[@]}" install -y "${pkgs[@]}"
