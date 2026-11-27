@@ -227,7 +227,7 @@ def cmd_octa303(a):
     rig = Rig()
     try:
         rig.play(2, 3.0, tail=0.5)                      # the first START after a load is silent
-        for prog, label, ev in ((2, "CUT RES ENV 127", []), (16, "ACCV 110, ACC 127", []), (17, "ACCV 64, ACC 127", [])):
+        for prog, label, ev in ((2, "CUT RES ENV 127", []), (16, "ACCV 110, ACC 127", []), (17, "ACCV 64, ACC 127", []), (18, "DRIV 127, ACCV 127, SQR+D", [])):
             for rep in range(2):
                 x, n = rig.play(prog, 7.0, events=ev, tail=0.3)
                 ts = n / FS
