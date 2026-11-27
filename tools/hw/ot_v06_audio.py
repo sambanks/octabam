@@ -168,6 +168,38 @@ def cmd_verb(a):
         rig.close()
 
 
+def env(x, cols, a_s, b_s, ms=20):
+    """RMS envelope of the given columns in `ms` frames between a_s and b_s seconds."""
+    seg = x[int(a_s * FS):int(b_s * FS), cols[0]:cols[1] + 1]
+    n = int(ms * FS / 1000)
+    k = len(seg) // n
+    return np.sqrt((seg[:k * n].reshape(k, n, -1) ** 2).mean(axis=(1, 2)))
+
+
+def cmd_vca_key(a):
+    """#1219: VCA160's KEY T1 reads KEYBUS's mean square of T1. VCA160 is on FX1 of T2 (project V06_RIG, program 3, image V06-RIG),
+    T2 plays steady pink noise and T1 hits every half second. The KEY knob (FX1 knob D, CC 37) is swept: the value that is T1 makes
+    T2's level follow T1's hits (a negative correlation, compression), OFF makes T2 follow its own signal."""
+    rig = Rig()
+    try:
+        rig.play(3, 3.0, tail=0.5)                      # the first START after a load is silent
+        for v in (None, 7, 21, 35, 49, 63, 77, 91, 105, 119):         # None: KEY untouched (the Part's value); then the nine positions' midpoints
+            ev = [(0.05, lambda: rig.clock.cc(2, 34, 0)), (0.10, lambda: rig.clock.cc(2, 35, 100))]
+            if v is not None:
+                ev.append((0.20, lambda v=v: rig.clock.cc(2, 37, v)))
+            x, n = rig.play(3, 6.5, events=ev, tail=0.2)
+            ts = n / FS
+            e1 = env(x, (0, 1), 1.0, ts)
+            e2 = env(x, (2, 3), 1.0, ts)
+            m = min(len(e1), len(e2))
+            c = float(np.corrcoef(np.log10(e1[:m] + 1e-9), np.log10(e2[:m] + 1e-9))[0, 1])
+            lab = "untouched" if v is None else f"{v:9d}"
+            print(f"  KEY knob {lab}: corr(T1 env, T2 env) {c:+.2f}   T2 rms {level(x, 2, 1.0, ts):6.1f} dBFS  "
+                  f"T2 env range {20 * np.log10(max(e2.max(), 1e-9) / max(e2.min(), 1e-9)):5.1f} dB", flush=True)
+    finally:
+        rig.close()
+
+
 def cmd_cx_fold(a):
     """#1263: FOLD moved with DEC at HOLD clicked. T1 is a CX OSC track (project V06_RIG, program 17, image V06-RIG): the click
     count on its own channels with FOLD static (0 and 100) and swept 0 to 127 over six seconds."""
@@ -201,10 +233,11 @@ def main():
     p.add_argument("--secs", type=float, default=6.0)
     sub.add_parser("wave-stop")
     sub.add_parser("verb")
+    sub.add_parser("vca-key")
     p = sub.add_parser("cx-fold")
     p.add_argument("--prog", type=int, default=17)
     a = ap.parse_args()
-    {"tracks": cmd_tracks, "wave-stop": cmd_wave_stop, "cx-fold": cmd_cx_fold, "verb": cmd_verb}[a.cmd](a)
+    {"tracks": cmd_tracks, "wave-stop": cmd_wave_stop, "cx-fold": cmd_cx_fold, "verb": cmd_verb, "vca-key": cmd_vca_key}[a.cmd](a)
 
 
 if __name__ == "__main__":
