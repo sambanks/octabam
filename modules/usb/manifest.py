@@ -254,6 +254,7 @@ POKE_COMPOSITE = Poke(0x400e2004, H("000000"), H("ef0201"),
 MODULE = Module(
     name="usb", key="USB", kind=Kind.HYBRID,
     category=Category.MIDI_USB, author="markandrus/octemu", author_url="https://github.com/markandrus/octemu",
+    coauthors=(("Sam Banks", "https://github.com/sambanks"), ("Bryan T", "https://github.com/bryantysinger")),
     evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", image="OCTABAMB5", date="2026-10-19",
         note="octabam-core OCTABAMB5 (main 11d9f129), macOS on an arm64 Mac, 19 Oct 2026, with TRACKS PRE, MAIN, "
              "CUE and MIDI at their defaults (20 channels): enumeration (the MIDI port and a 20-channel input); "

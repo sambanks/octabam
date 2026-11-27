@@ -598,13 +598,15 @@ def brain_page(part: str, lab: str, book: Book) -> str:
 
 def credits_page(book: Book) -> str:
     by_who: dict[str, list] = {}
+    person: dict[str, str] = {}
     for m in book.documented():
-        name, url, _ = gen_pages.who(m)
-        by_who.setdefault(url or name, []).append(m)
+        for name, url in gen_pages.people(m):
+            by_who.setdefault(url or name, []).append(m)
+            person.setdefault(url or name, name)
     body = ["Every feature in the published remixes was written by someone, and is credited here.", ""]
-    for who, ms in sorted(by_who.items(), key=lambda kv: gen_pages.who(kv[1][0])[0].lower()):
-        name, url, _ = gen_pages.who(ms[0])
-        link = f"[{name}]({url})" if url else name
+    for who, ms in sorted(by_who.items(), key=lambda kv: person[kv[0]].lower()):
+        name = person[who]
+        link = f"[{name}]({who})" if who.startswith("http") else name
         items = sorted({(label(m), book.page_of(m)) for m in ms}, key=lambda t: t[0].lower())
         body.append(f"- {link}: " + ", ".join(f"[{t}]({_rel('credits', p)})" for t, p in items))
     built = built_on(book)

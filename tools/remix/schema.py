@@ -1703,6 +1703,7 @@ class Module:
     category: Category | None = None
     author: str = ""             # a GitHub handle or a name, as the table credits it
     author_url: str = ""         # the author's repository or profile
+    coauthors: tuple[tuple[str, str], ...] = ()   # (name, profile URL) of each further credited person
     evidence: tuple[Evidence, ...] = ()   # schema.Evidence, optional; the form gates read the strongest level
     proof: Proof | None = None            # old form, submodule manifests only: becomes `evidence` (from_proof)
     proof_note: str = ""
