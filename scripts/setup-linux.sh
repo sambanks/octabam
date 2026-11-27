@@ -21,8 +21,14 @@ scripts/m68k-toolchain.sh --check "$PREFIX" \
   || pkgs+=(pkgconf texinfo libgmp-dev libmpfr-dev libmpc-dev libisl-dev libzstd-dev zlib1g-dev)
 # shellcheck disable=SC2206
 pkgs+=(${EXTRA_PACKAGES:-})
-$SUDO apt-get update
-$SUDO apt-get install -y "${pkgs[@]}"
+apt_sources=()
+if [[ ${RUNNER_ENVIRONMENT:-} == github-hosted && -f /etc/apt/sources.list.d/ubuntu.sources ]]; then
+  # All required packages come from Ubuntu. An unrelated feed on the runner
+  # can return 403 and prevent apt from installing even these archive packages.
+  apt_sources=(-o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=-)
+fi
+$SUDO apt-get "${apt_sources[@]}" update
+$SUDO apt-get "${apt_sources[@]}" install -y "${pkgs[@]}"
 command -v uv >/dev/null 2>&1 \
   || echo "setup-linux: uv not installed; make emu-setup needs it (curl -LsSf https://astral.sh/uv/install.sh | sh)"
 
