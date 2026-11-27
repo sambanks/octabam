@@ -9,17 +9,28 @@ Tick a row when it passes; write the image, the unit (MKI or MKII) and the resul
 
 ## Run over the cable (27 Nov 2026, one MKII)
 
+Per-track checks use the unit's USB audio (track `t` is channels `2t-2` and `2t-1`) and USB MIDI: `ot_v06_audio.py`,
+`ot_v06_midi.py`. A project is loaded with `ot_card.py load`, which first moves the unit to bank H: leaving DISK MODE reloads
+every bank but the current one, so a bank that is current keeps its old RAM (27 Nov 2026: edits to bank A never reached the
+unit until this).
+
 | item | what ran | result |
 |---|---|---|
 | #1247, #1233, #1272 REMIX SWITCH | `ot_v06.py switch`: COMMAND 3 to the running image's own `.RMX`, idle unit, 22 switches without the USB reset, 170 with it (#1292) | 6 stops in 22 without; 3 in 170 with. MB_PARK 3 after every switch that returned. Open: one switch whose DSP never started (no REMOTE records from the new image), the `SYNCING PROJECT` hang (once), a boot-screen stall (twice) |
 | #1255 FRAME GUARD | stalled-unit frame log, then the edge back to 110 µs (#1295) | the stalling entry was 135.6 µs late, below the 140 µs edge; with 110 µs, no stall in about 30 program changes (3 in about 30 at 140 µs). Not enough cycles to count |
-| #1264 USB MIDI paused in DISK MODE | not run | needs CLOCK SEND on and the sequencer playing at COMMAND 1: `ot_v06.py diskread` (the suite loads `V06_DISK` for it) |
+| #1232 WAVE STOP | WAVE on T1 and T2, AMP HOLD and REL INF by CC, STOP once and twice, the tail on T1 and T2 | fixed image: digital silence after STOP. Image from before the fix: T1 and T2 keep sounding at -34.9 dBFS, the playing level. The check sees the bug |
+| #1263 CX OSC FOLD | CX OSC on T1 (the module's seeds, DEC at HOLD), FOLD static and swept 0 to 127 by CC, clicks on T1's channels | fixed image: 0 click events in 4 sweeps. Image from before the fix: 8, 16 and 14 events in 3 sweeps (static FOLD: 0). The check sees the bug |
+| #1234 VERBERATION: AMNT | the dry hit and the wet on T6 at AMNT 0, 32, 64, 96, 127 | the dry holds to AMNT 64 (-0.2 dB), then -6.7 dB at 96 and -27.6 dB at 127; the wet is full from 64. As the PR states |
+| #1234 VERBERATION: stop kill, PRE | tail after a single and a double MIDI STOP; PRE 0 against 127 | not shown. A single MIDI STOP already gives digital silence, so there is no tail to cut; after STOP, STOP every track holds a DC offset of about -77 dBFS (not in the PR). The PRE windows overlapped the impulse stimulus, which is a burst and not a click |
+| #1219 VCA160 KEY | VCA160 on FX1 of T2 (steady noise), T1 hits every half second; the KEY knob swept by CC | KEY at the T1 position: T2's level follows T1's hits (correlation -0.72, T2's envelope range 23.5 dB); other positions and KEY untouched: no relation (about +0.03, 3 dB). Not run: CHARACTER's KEY and VOID still reading the peak; no image from before the change |
+| #1266 MIDI LOOPBACK | MIDI track 1 (channel 11, trigs on steps 4, 8, 12, 16, a CC 1 scene lock), DEST EXT, INT, BOTH, crossfader swept, the unit's USB MIDI out counted | EXT and BOTH: 4 note-ons, 4 note-offs and 75 to 77 CCs on channel 11. INT: none of either. Not shown: INT's notes reaching the unit's own receiver; no image from before the change |
+| #1264 USB MIDI paused in DISK MODE | not run | needs CLOCK SEND on and the sequencer playing at COMMAND 1: `ot_v06.py diskread` |
 
-Not valid, do not read as passes: the matrix runs of #1219 (VCA160), #1232 and #1270 (WAVE, OCTA303), #1234
-(VERBERATION) and #1263 (CX OSC). Every layout read the same as BASE, which a neutral-default effect also does, and
-the machine layouts were not shown to differ. No effect or machine layout has been confirmed on the unit.
+Every audio check plays once first and discards it: the first START after a project load is silent on every image.
 
 ## Check by hand
+
+The rows below the first six are what the cable runs above do not cover: the panel gestures, and the parts listed as not shown.
 
 ### #1270 OCTA303 v10.0 and OCTA303 SEAM (image: `octabam`; SEAM only in `test/octa303-seam`)
 

@@ -113,6 +113,7 @@ def cmd_wave_stop(a):
         def amp(t):
             return [(0.2, lambda: rig.clock.cc(t, 23, 127)), (0.25, lambda: rig.clock.cc(t, 24, 127))]
         ev = amp(1) + amp(2)
+        rig.play(3, 3.0, tail=0.5)                      # the first START after a load is silent
         for stops in (1, 2):
             x, n = rig.play(3, 6.0, events=ev, tail=3.0, stops=stops)
             ts = n / FS
