@@ -658,6 +658,7 @@ ab_engine_select:
 	mov3q.l #1,269452696
 	jsr 1073905152
 	jsr mc_publish
+	mov3q.l #-1,52(%sp)
 	movem.l (%sp),#1036
 	lea (48,%sp),%sp
 	jmp 1074059592
