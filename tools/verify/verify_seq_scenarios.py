@@ -942,6 +942,11 @@ def run_scenarios() -> int:
         poke8(port, UI_PART, 3)
         midi_part = PARTS_BASE + BANK_STR + 2 * PART_STR + 0x3e2
         port.poke(midi_part + 20, bytes((64,)))  # CC1 Part value
+        mirror = 0x1001614E + u8(port, UI_PTN) * PTN_STR + 0x48D0
+        lock_mirror = mirror + (0x4900 - 0x48D0)
+        retained = sym_opt("store_retained_count")
+        retained_active = retained is not None and port.long(retained) > 0
+        mirror_before = port.peek(lock_mirror, 0x800)
         midi_lock_span = 7 * 0x8B0 + 0x800
         midi_locks_before = bytearray(port.peek(midi_lock_base, midi_lock_span))
         for step in range(64):
@@ -1295,12 +1300,16 @@ def run_scenarios() -> int:
                       u8(port, midi_lock_base + step * 32 + flat)
                       for step in (0, 6, 11) for flat in (3, 4, 5)))
 
-        mirror = 0x1001614E + u8(port, UI_PTN) * PTN_STR + 0x48D0
         check("MIDI note-trig mask reaches the battery mirror",
               port.peek(mirror, 8) == midi_bytes)
+        expected_locks = bytearray(port.peek(midi_lock_base, 0x800))
+        if retained_active:
+            # STORE owns the last two padding bytes of every mirrored MIDI step.
+            # SEQ must preserve them while publishing the native lock fields.
+            for slot in (30, 31):
+                expected_locks[slot::32] = mirror_before[slot::32]
         check("MIDI CC and NOTE locks reach the battery mirror",
-              port.peek(mirror + (0x4900 - 0x48D0), 0x800)
-              == port.peek(midi_lock_base, 0x800))
+              port.peek(lock_mirror, 0x800) == expected_locks)
 
         # Exercise the user's CUE -> YES gesture. The free-rhythm reader
         # uses a0; the MIDI writer must retain its destination address.
