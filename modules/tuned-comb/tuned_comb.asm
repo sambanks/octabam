@@ -568,7 +568,7 @@ tq08z:
 ; ---- the sample loop -------------------------------------------------------
 ; Loop-carried values live in address registers, so the loop reads none of
 ; them back: r3 = d (n3 its slope, stepped by the AGU), r2 = the MIX run (n2
-; its step), n0 = b, n7 = g, n1 = f (per sample). r1 walks the lowpass state,
+; its step), n0 = b, n7 = g and n1 = f (both per sample). r1 walks the lowpass state,
 ; $31..$34 = y L (high, low), y R (high, low); r5 reads L's four taps then
 ; R's ($600 - 3 on), r4 and r6 write L's s and its twin then R's ($600 on).
 ; Each sample: i and f from d, j = w - i - 1 (wrapped), the next write index
@@ -584,14 +584,13 @@ tq08z:
         move    #>$603,n5               ; $600 + 3: L's T2 to R's TM
         lua     (r7+$33),r1             ; (two steps back each sample)
         move    n7,x:(r7+$30)           ; the frame count, restored below
-        move    n7,a
-        move    x:(r7+$06),n7           ; g
         move    (r3)+n3                 ; d for the first sample
-        do      a,>tq09z
+        do      n7,>tq09z               ; (n7 then holds g, reloaded each sample)
 ; ---- shared: i, f, j, w' and the twin ------------------------------------
         move    r3,a                    ; d, Q11.12
         asr     #$c,a,a                 ; i; d's 12 fraction bits atop a0
         move    x:(r7+$00),x1           ; w, the last index written
+        move    x:(r7+$06),n7           ; g (do has its count)
         move    a0,b
         lsr     b       (r2)+n2         ; f, Q23 (b1); the MIX run steps
         move    a1,y0                   ; i

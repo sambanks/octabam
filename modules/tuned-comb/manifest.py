@@ -87,7 +87,7 @@ MODULE = Module(
     # Two 1,536-word lines, the whole 3,072 an FX1 slot gives; `fx1_only` is
     # the promise that an FX2 instance writes nothing (verify_tuned_comb).
     claims=Claims(stock_instance_buffer=True, buffer_words=3072, fx1_only=True),
-    harness=Harness(layout_char="T", is_server=False, bus_client=False),
+    harness=Harness(layout_char="5", is_server=False, bus_client=False),
     store=Store("octabam.tuned-comb"),
     settings=(stations.setting(),),
     variant=stations.variant(lambda: MODULE),
