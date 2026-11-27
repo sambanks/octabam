@@ -2,6 +2,7 @@
 port advances its clock only at main's stock `bras .`."""
 
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 
 REMIX = Remix(
     name="waveload-port",
@@ -9,9 +10,7 @@ REMIX = Remix(
         note="the load path under the port"),),
     doc="waveload without the idle loop: the port gate for the wave engines in the frame interrupt.",
     modules=("USB", "CF METER", "WAVE LOAD",
-             "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
-             "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
-             "PLATE REV", "SPRING REV"),
+             *stock.effects("DARK REV")),
     fallback="NONE",
     settings={("octabam.usb", "TRACKS"): "PRE", ("octabam.usb", "MAIN"): 1,
               ("octabam.usb", "CUE"): 1, ("octabam.usb", "MASTER"): 0,

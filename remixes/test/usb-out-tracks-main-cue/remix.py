@@ -8,6 +8,7 @@ harvests nothing in payload A). Local test remix (Bryan T, 25 Sep 2026).
 """
 
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 
 REMIX = Remix(
     name="usb-out-tracks-main-cue",
@@ -15,9 +16,7 @@ REMIX = Remix(
     family="mods", evidence=(Evidence(Level.EMULATOR),),
     doc="stock + USB MIDI + USB AUDIO (20 ch: tracks, MAIN, CUE); PLATE REV harvested for USB's words.",
     modules=("USB",
-             "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
-             "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
-             "SPRING REV", "DARK REV"),
+             *stock.effects("PLATE REV")),
     fallback="NONE",
     settings={("octabam.usb", "TRACKS"): "PRE", ("octabam.usb", "MAIN"): 1,
               ("octabam.usb", "CUE"): 1, ("octabam.usb", "MASTER"): 0,

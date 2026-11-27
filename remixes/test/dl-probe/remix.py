@@ -3,6 +3,7 @@
 A measurement build (modules/dlprobe/README.md). The loader sends on the frames the port delivers.
 """
 from remix.schema import Pin, Evidence, Level, Remix
+from remix import stock
 
 CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "CC MAP", "CC FEEDBACK", "USB",
@@ -11,8 +12,7 @@ CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "SCALE QUANTIZER", "TUNER", "DIRECT_JUMP_KYOTI", "RELOAD_FROM_PROJECT", "RLEN PLEN",
         "ATA WRITE GUARD", "EVENTS",
         "LOAD METER")
-STOCK14 = ("FILTER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",
-           "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY", "PLATE REV", "SPRING REV", "DARK REV")
+STOCK14 = stock.effects("EQUALIZER")
 OURS = ("MODULATION", "SPECTRUM", "CHARACTER", "TRANSIENT")
 
 REMIX = Remix(
@@ -20,8 +20,7 @@ REMIX = Remix(
     family="mods", evidence=(Evidence(Level.EMULATOR),),
     doc="octabam with DLPROBE on FX1 in place of EQUALIZER (the loader as in octabam).",
     modules=CORE + ("LOFI AMF FIX", "MODE DEFAULTS", "DLPUMP", "DLCOPY", "DLPROBE") + STOCK14 + OURS,
-    fx1=("DLPROBE", "SPECTRUM", "CHARACTER", "MODULATION", "FILTER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",
-         "COMB FILTER", "COMPRESSOR", "LO-FI"),
+    fx1=("DLPROBE", "SPECTRUM", "CHARACTER", "MODULATION", *stock.fx1_effects("EQUALIZER")),
     # The window words no stock effect writes (docs/contributing/DEMAND_LOADER.md): the top of each FX2
     # slot from 0x3da3 up, and below 0x37f00, where payload B's boot zero loop starts. DLCOPY is the
     # lowest upload; the stub and the reverb guards follow it (window_loader); LOAD METER's DSP half

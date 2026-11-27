@@ -6,6 +6,7 @@ boot timing (the stock first-sector race, modules/ata-write-guard/README.md).
 """
 
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 
 REMIX = Remix(
     name="buffer-saver",
@@ -15,8 +16,6 @@ REMIX = Remix(
              "its buffer, two buffers in one save, an immediate re-save does not ask, a reload brings the takes "
              "back, NO saves as stock"),),
     doc="stock effects with SAVE PROJECT offering to save the recorder buffers' unsaved takes, each assigned to itself.",
-    modules=("BUFFER SAVER", "ATA WRITE GUARD", "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",
-             "CHORUS", "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI",
-             "DELAY", "PLATE REV", "SPRING REV", "DARK REV"),
+    modules=("BUFFER SAVER", "ATA WRITE GUARD", *stock.EFFECTS),
     fallback="NONE",
 )

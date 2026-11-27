@@ -1,5 +1,6 @@
 """RESONATOR on FX1 beside the stock effects: PLATE REV gives up its words."""
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 
 REMIX = Remix(
     family="effects",
@@ -9,11 +10,8 @@ REMIX = Remix(
     name="resonator",
     doc="RESONATOR on FX1 beside the stock effects (all but PLATE REV).",
     modules=("RESONATOR",
-             "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",
-             "CHORUS", "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI",
-             "DELAY", "SPRING REV", "DARK REV"),
+             *stock.effects("PLATE REV")),
     fx1=("RESONATOR",
-         "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
-         "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI"),
+         *stock.FX1),
     fallback="NONE",
 )

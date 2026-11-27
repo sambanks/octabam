@@ -3,6 +3,7 @@ effects but SPATIALIZER (the meter's DSP half takes its words, as in stock-meter
 code runs in its words, as in test/vca160). The image for reading VCA160's slot cost on a unit with
 tools/hw/ot_matrix.py, against the same BASE as stock-meter-b."""
 from remix.schema import Evidence, Level, Pin, Remix
+from remix import stock
 
 CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "CC MAP", "CC FEEDBACK", "USB",
@@ -11,8 +12,7 @@ CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "SCALE QUANTIZER", "TUNER", "DIRECT_JUMP_KYOTI", "RELOAD_FROM_PROJECT", "RLEN PLEN",
         "ATA WRITE GUARD", "EVENTS",
         "LOAD METER")
-STOCK = ("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",
-         "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY", "PLATE REV", "SPRING REV", "DARK REV")
+STOCK = stock.EFFECTS
 DROPPED = ("SPATIALIZER", "PLATE REV")
 
 REMIX = Remix(

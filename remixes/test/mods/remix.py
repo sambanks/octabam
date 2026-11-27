@@ -16,6 +16,7 @@ first.
 """
 
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 
 REMIX = Remix(
     name="mods",
@@ -26,9 +27,7 @@ REMIX = Remix(
              "RECORDER LOOP FIX", "RLEN PLEN",
              "DIRECT_JUMP_KYOTI", "BATCH_BUGFIXES", "RELOAD_FROM_PROJECT",
              "USB",
-             "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
-             "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
-             "PLATE REV", "SPRING REV", "DARK REV"),
+             *stock.EFFECTS),
     fallback="NONE",
     settings={("octabam.usb", "TRACKS"): "PRE", ("octabam.usb", "MAIN"): 1,
               ("octabam.usb", "CUE"): 1, ("octabam.usb", "MASTER"): 0,

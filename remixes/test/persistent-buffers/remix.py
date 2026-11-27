@@ -4,6 +4,7 @@ STORE + PERSISTENT BUFFERS on the stock effects. Not flashed.
 """
 
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 
 REMIX = Remix(
     name="persistent-buffers",
@@ -12,8 +13,6 @@ REMIX = Remix(
         note="verify_persistent_buffers under the port"),),
     doc="Recorder buffers BUFFERS/REC1.wav..REC8.wav under the project on SAVE / LOAD.",
     modules=("STORE", "PERSISTENT BUFFERS",
-             "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
-             "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
-             "PLATE REV", "SPRING REV", "DARK REV"),
+             *stock.EFFECTS),
     fallback="NONE",
 )

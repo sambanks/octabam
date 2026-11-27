@@ -1,5 +1,6 @@
 """VOID replaces COMB FILTER; PLATE REV words host its DSP."""
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 
 REMIX = Remix(
     family="effects",
@@ -9,8 +10,6 @@ REMIX = Remix(
     name="void",
     doc="VOID replaces COMB FILTER; PLATE REV words host its DSP.",
     modules=("VOID", "KEYBUS",
-             "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",
-             "CHORUS", "SPATIALIZER", "COMPRESSOR", "LO-FI",
-             "DELAY", "SPRING REV", "DARK REV"),
+             *stock.effects("COMB FILTER", "PLATE REV")),
     fallback="NONE",
 )

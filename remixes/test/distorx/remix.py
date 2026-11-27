@@ -1,6 +1,7 @@
 """DISTORX on FX1 and FX2, beside the stock effects (CHORUS, PLATE REV and SPRING REV give up their words)."""
 
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 
 REMIX = Remix(
     name="distorx",
@@ -14,12 +15,9 @@ REMIX = Remix(
     doc="DISTORX on FX1 and FX2, beside the stock effects but CHORUS, PLATE REV and SPRING REV, whose words it takes.",
     modules=(
         "DISTORX",
-        "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",
-        "COMB FILTER", "COMPRESSOR", "LO-FI",
-        "DELAY", "DARK REV",
+        *stock.effects("CHORUS", "SPATIALIZER", "PLATE REV", "SPRING REV"),
     ),
     fx1=("DISTORX",
-         "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",
-         "COMB FILTER", "COMPRESSOR", "LO-FI"),
+         *stock.fx1_effects("CHORUS", "SPATIALIZER")),
     fallback="NONE",
 )

@@ -1,6 +1,7 @@
 """VCA160 (modelled on the dbx 160) on FX1 and FX2 with an id of its own, and KEYBUS for its KEY, beside the stock effects but PLATE REV, whose words it runs in."""
 
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 
 REMIX = Remix(
     name="vca160",
@@ -11,12 +12,9 @@ REMIX = Remix(
     doc="VCA160 on FX1 and FX2 with its own id, and KEYBUS for its KEY, beside the stock effects but PLATE REV, whose words it runs in.",
     modules=(
         "VCA160", "KEYBUS",
-        "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",
-        "CHORUS", "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI",
-        "DELAY", "SPRING REV", "DARK REV",
+        *stock.effects("PLATE REV"),
     ),
     fx1=("VCA160",
-         "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",
-         "CHORUS", "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI"),
+         *stock.FX1),
     fallback="NONE",
 )

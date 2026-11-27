@@ -7,13 +7,11 @@ project saved with TESTGEN on FX2 (0.1) passes that track's audio through
 untouched. Two TESTGENs in series on one track crackled on Ignorato's MKII (FX1
 PINK into FX2 TESTGEN, OCTABAM10, 4 Oct 2026; cause not found)."""
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 REMIX = Remix(family="effects", evidence=(Evidence(Level.UNIT, unit="MKII", who="Ignorato", image="OCTABAM6", date="2026-10-04"),),
               name="testgen", doc="TESTGEN on FX1 beside the stock effects (all but PLATE REV, whose words it takes).",
               modules=("TESTGEN",
-                       "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",
-                       "CHORUS", "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI",
-                       "DELAY", "SPRING REV", "DARK REV"),
+                       *stock.effects("PLATE REV")),
               fx1=("TESTGEN",
-                   "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
-                   "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI"),
+                   *stock.FX1),
               fallback="NONE")

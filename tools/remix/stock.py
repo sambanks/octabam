@@ -492,6 +492,30 @@ NO_DSP = frozenset({"DELAY"})
 
 BY_KEY = {m.key: m for m in MODULES}
 
+# The 14 stock effects, in the choosers' order: what a remix lists to keep
+# them all. MULTIBCOMP is not one (the null stub above, no row of its own).
+EFFECTS = tuple(m.key for m in MODULES if m.key != "MULTIBCOMP")
+# The 10 of them on stock's FX1 chooser: all but DELAY and the reverbs.
+FX1 = tuple(k for k in EFFECTS if k != "DELAY" and k not in CONSUMED)
+
+
+def _less(keys, without):
+    unknown = sorted(set(without) - set(keys))
+    if unknown:
+        raise ValueError(f"not among {keys}: {unknown}")
+    return tuple(k for k in keys if k not in without)
+
+
+def effects(*without):
+    """EFFECTS in order, less the ones a remix gives up (each must be one):
+    `modules=("SCOPE", *stock.effects("SPATIALIZER"))`."""
+    return _less(EFFECTS, without)
+
+
+def fx1_effects(*without):
+    """FX1 in order, less the given ones: `fx1=("SPECTRUM", *stock.fx1_effects("EQUALIZER"))`."""
+    return _less(FX1, without)
+
 # ---- the stock curve bank at X:0x4840, and who reads it --------------------
 # A 4,096-word data record (32 curves x 128, docs/firmware/TABLES.md) at the
 # SAME X address in BOTH payloads -- the exception to the per-payload table

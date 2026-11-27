@@ -3,13 +3,13 @@
 A port-only instrument (docs/contributing/DEMAND_LOADER.md): MODULATION's id dispatches to a stub that is dry until DLCOPY
 has published the code, which DLPUMP stages when a track uses MODULATION. The guard wrappers front PLATE REV, DARK REV and SPRING REV."""
 from remix.schema import Pin, Evidence, Level, Remix
+from remix import stock
 REMIX = Remix(family="effects", evidence=(Evidence(Level.EMULATOR),),
               name="dlspike", doc="Demand-load spike: MODULATION loaded on demand.",
               modules=("USB", "LOAD METER", "DLPUMP", "DLCOPY", "MODULATION",
                        "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",
                        "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY", "SPRING REV", "PLATE REV", "DARK REV"),
-              fx1=("MODULATION", "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
-                   "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI"),
+              fx1=("MODULATION", *stock.FX1),
               window=(("DLCOPY", 0x33DC3), ("MODULATION", 0x3B820), ("LOAD METER", 0x37DA3), ("LOAD METER:B", 0x37E50)),
               window_demand=("MODULATION",),
               window_homes=(("MODULATION", 0x3F820),),

@@ -1,6 +1,7 @@
 """MORPH alone: track + UP / DOWN runs a track's scene morph by itself, with STORE and the stock effects."""
 
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 
 REMIX = Remix(
     name="morph",
@@ -9,8 +10,6 @@ REMIX = Remix(
              "saving through a power cycle, RELOAD and another project; tools/morph/test_morph.py and "
              "tools/morph/port_morph.py"),),
     doc="MORPH (track + UP / DOWN: the scene morph by itself, saved with the project) with STORE and the stock effects.",
-    modules=("MORPH", "STORE", "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",
-             "CHORUS", "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI",
-             "DELAY", "PLATE REV", "SPRING REV", "DARK REV"),
+    modules=("MORPH", "STORE", *stock.EFFECTS),
     fallback="NONE",
 )

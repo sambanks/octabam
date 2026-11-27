@@ -4,6 +4,7 @@ A measurement build (modules/extprobe/README.md). EXTPROBE takes EQUALIZER's id 
 demand loader is in this image, so nothing but the reverb under test writes the slot at T8.
 """
 from remix.schema import Pin, Evidence, Level, Remix
+from remix import stock
 
 CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "CC MAP", "CC FEEDBACK", "USB",
@@ -12,15 +13,14 @@ CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "SCALE QUANTIZER", "TUNER", "DIRECT_JUMP_KYOTI", "RELOAD_FROM_PROJECT", "RLEN PLEN",
         "ATA WRITE GUARD", "EVENTS",
         "LOAD METER")
-STOCK13 = ("FILTER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER",
-           "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY", "PLATE REV", "SPRING REV", "DARK REV")
+STOCK13 = stock.effects("EQUALIZER")
 
 REMIX = Remix(
     name="ext-probe",
     family="mods", evidence=(Evidence(Level.EMULATOR),),
     doc="octabam's core and stock effects (EQUALIZER's id is the probe's) with EXTPROBE on FX1: the highest window word a reverb writes.",
     modules=CORE + ("LOFI AMF FIX", "MODE DEFAULTS") + STOCK13 + ("EXTPROBE",),
-    fx1=("EXTPROBE", "FILTER", "DJ EQ", "PHASER", "FLANGER", "CHORUS", "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI"),
+    fx1=("EXTPROBE", *stock.fx1_effects("EQUALIZER")),
     window=(("EXTPROBE", 0x33DA3), ("LOAD METER", 0x37DA3), ("LOAD METER:B", 0x37E50)),
     fallback="NONE",
     settings={("octabam.usb", "TRACKS"): "PRE", ("octabam.usb", "MAIN"): 1,

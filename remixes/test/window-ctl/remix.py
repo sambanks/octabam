@@ -6,6 +6,7 @@ the cost of running from the window, to set against the same code in internal P 
 modules/modulation/README.md). PLATE REV, SPRING REV and DARK REV give up their words to LOAD METER's DSP
 half and the CORE modules; no module here has an FX2 buffer, so the window words are not another effect's."""
 from remix.schema import Pin, Evidence, Level, Remix
+from remix import stock
 
 CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
         "CC MAP", "CC FEEDBACK", "USB",
@@ -18,10 +19,8 @@ CORE = ("BRAIN", "STORE", "KITS", "MIDI SCENES", "SCENES P2", "PLOCKS P2",
 REMIX = Remix(
     name="window-ctl", family="effects", evidence=(Evidence(Level.EMULATOR),),
     doc="CORE with LOAD METER and MODULATION in the shared window beside the stock effects (all but CHORUS, whose id it takes, and the three reverbs).",
-    modules=CORE + ("MODULATION", "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",
-                    "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY"),
-    fx1=("MODULATION", "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",
-         "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI"),
+    modules=CORE + ("MODULATION", *stock.effects("CHORUS", "PLATE REV", "SPRING REV", "DARK REV")),
+    fx1=("MODULATION", *stock.fx1_effects("CHORUS")),
     fallback="NONE",
     settings={("octabam.usb", "TRACKS"): "PRE", ("octabam.usb", "MAIN"): 1,
               ("octabam.usb", "CUE"): 1, ("octabam.usb", "MASTER"): 0,

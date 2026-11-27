@@ -410,7 +410,10 @@ instance). The build writes its list row and cursor position;
 `verify_menu` checks that its descriptor and id entry are byte-identical to
 stock. A stock effect a remix leaves out is left alone entirely: an old
 project that selects it still runs it, it just has no row.
-`remixes/test/mods/remix.py` lists all fourteen.
+`stock.EFFECTS` (`tools/remix/stock.py`) is all fourteen, in the
+choosers' order: a remix keeps them with `*stock.EFFECTS`, gives some up
+with `*stock.effects("SPATIALIZER")`, and lists stock's FX1 chooser with
+`stock.FX1` or `stock.fx1_effects(...)`.
 
 Two rules, both enforced:
 

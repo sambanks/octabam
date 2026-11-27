@@ -1,6 +1,7 @@
 """Stock effects plus REC THRESHOLD alone: TRIG THR with LEV and IN on RECORDING SETUP 2, no BRAIN."""
 
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 
 REMIX = Remix(
     name="rec-threshold",
@@ -12,8 +13,6 @@ REMIX = Remix(
     doc="stock effects with the threshold-armed recorder TRIG THR, its LEV and an IN meter: the image for a unit.",
     # ATA WRITE GUARD: stock's first-sector card write has an IRQ window a timing shift
     # can land a port run in (TRAPS.md trap-first-sector-irq; it hung hooks-free-loop)
-    modules=("REC THRESHOLD", "ATA WRITE GUARD", "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER",
-             "CHORUS", "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI",
-             "DELAY", "PLATE REV", "SPRING REV", "DARK REV"),
+    modules=("REC THRESHOLD", "ATA WRITE GUARD", *stock.EFFECTS),
     fallback="NONE",
 )

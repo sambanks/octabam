@@ -1,6 +1,7 @@
 """OCTA303 + dEVILish beside the stock effects (PHASER, whose id dEVILish takes, gives up its words)."""
 
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 
 REMIX = Remix(
     name="devilish",
@@ -11,12 +12,9 @@ REMIX = Remix(
     doc="OCTA303 and dEVILish (the Devil Fish mods on FX1 or FX2 of an OCTA-303 track) beside the stock effects but PHASER.",
     modules=(
         "OCTA303", "DEVILISH",
-        "FILTER", "EQUALIZER", "DJ EQ", "FLANGER", "CHORUS",
-        "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI",
-        "DELAY", "PLATE REV", "SPRING REV", "DARK REV",
+        *stock.effects("PHASER"),
     ),
     fx1=("DEVILISH",
-         "FILTER", "EQUALIZER", "DJ EQ", "FLANGER", "CHORUS",
-         "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI"),
+         *stock.fx1_effects("PHASER")),
     fallback="NONE",
 )

@@ -7,6 +7,7 @@ compared with the same input under the port
 """
 
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 
 REMIX = Remix(
     name="sos-capture",
@@ -15,11 +16,8 @@ REMIX = Remix(
     doc="recorder fixes + USB (TRACKS out, AB in) (stock effects minus SPATIALIZER).",
     modules=("RECORDER LOOP FIX",
              "USB",
-             "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
-             "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
-             "PLATE REV", "SPRING REV", "DARK REV"),
-    fx1=("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
-         "COMB FILTER", "COMPRESSOR", "LO-FI"),
+             *stock.effects("SPATIALIZER")),
+    fx1=stock.fx1_effects("SPATIALIZER"),
     fallback="NONE",
     settings={("octabam.usb", "TRACKS"): "PRE", ("octabam.usb", "MAIN"): 0,
               ("octabam.usb", "CUE"): 0, ("octabam.usb", "MASTER"): 0,

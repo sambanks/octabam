@@ -6,6 +6,7 @@ unit that runs stock projects.
 """
 
 from remix.schema import Evidence, Level, Remix
+from remix import stock
 
 REMIX = Remix(
     name="usb-out-tracks-post",
@@ -14,9 +15,7 @@ REMIX = Remix(
         note="P3, 5 Oct 2026 (smoke test: 16 channels, LEVEL/mute/solo/crossfader follow)"),),
     doc="stock + USB (TRACKS POST) (16 ch: the tracks after their own MAIN gain).",
     modules=("USB",
-             "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
-             "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
-             "PLATE REV", "SPRING REV", "DARK REV"),
+             *stock.EFFECTS),
     fallback="NONE",
     settings={("octabam.usb", "TRACKS"): "POST", ("octabam.usb", "MAIN"): 0,
               ("octabam.usb", "CUE"): 0, ("octabam.usb", "MASTER"): 0,
