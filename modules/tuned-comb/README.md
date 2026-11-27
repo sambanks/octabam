@@ -35,7 +35,9 @@ about 20 cents down: the lines stop at 1,530 samples.
 rings at DC), so the longest decays shorten at high notes: about 26 s at C3,
 6.6 s at C5, 1.6 s at C7. LP closed shortens the decay further, more at high
 notes, as on the stock COMB: the gain is the law's with LP open, so the comb's
-DC mode, which LP leaves alone, never rings longer than the note. At C8 and
+DC mode, which LP leaves alone, never rings longer than the note. That mode's
+gain is up to 1/(1 − g), about 500, so the loop takes its input through a DC
+blocker (below): a source's DC never reaches it. At C8 and
 above, short decays run up to 20 % long (the Hermite's loss is taken on the
 unit circle; the ring's pole is just inside it).
 
@@ -111,8 +113,14 @@ stock loop, the on-circle correction and the pole solve). The DSP and
 - **Per sample, both channels inline:** the four taps from a guard-word line
   (below), most read in the parallel slots of other work; the Hermite in Niemitalo's form, worked in eighths; the
   lowpass in double precision (a single-word one-pole has a dead band the
-  loop would hold as DC); s = x + g·y, written at the next index and its
-  guard twin; out = x + m·(s − x). The Hermite's coefficients and the
+  loop would hold as DC); the input's DC blocker, hp = x − dc rounded and
+  dc += hp/1024 in double precision (a one-pole highpass at about 6.9 Hz);
+  s = hp + g·y, written at the next index and its guard twin; out = x +
+  m·(s − x), the dry as it came. The blocker is outside the loop, so the
+  loop's response, and the pitch solve, are what they were; inside it, its
+  phase at low notes would have moved the pitch. Without it a source's DC
+  came out about 500 times larger (−66 dBFS in, near −10 dBFS out at long
+  decays): the wet pushed against one rail and a limiter after it pinned. The Hermite's coefficients and the
   lowpass are rounded (a floor there is a DC bias the feedback holds), and
   the loop's sum s is truncated toward zero: rounded, a loop with g near 1
   holds a limit cycle (a DC level up to about 0.5/(1 − g) LSB); toward zero
@@ -122,14 +130,17 @@ stock loop, the on-circle correction and the pole solve). The DSP and
   the four taps never wrap (FX1 bases are not all 2048-aligned: the lines
   are linear and the write index wraps by compare); the r7 block's $00..$3c;
   a 175-word table (E2 65, LG2, ATN, BLP 33 each, SH
-  11). Code 1,142 words: a remix gives it a run of about 1,320 free words
+  11). Code 1,166 words (1,142 before the DC blocker; assembled count to
+  confirm): a remix gives it a run of about 1,320 free words
   with its table (PLATE REV and SPRING REV together, or COMPRESSOR, LO-FI, DJ
-  EQ and COMB FILTER together), or 1,142 where the table goes to the stock
+  EQ and COMB FILTER together, which the blocker's 24 words may no longer
+  fit), or 1,166 where the table goes to the stock
   curve bank (with DJ EQ out of the remix).
 
 ## Load
 
-About 4.5 % of a frame a slot with the knobs held, and about 6 % with a knob
+Measured before the input's DC blocker, which adds 24 one-word instructions
+a sample (both channels), to be re-measured on a unit: about 4.5 % of a frame a slot with the knobs held, and about 6 % with a knob
 moving every block (an LFO on LP, FB on the crossfader); stock COMB FILTER is
 2.7 %. No selectable configuration of TUNED COMB alone can overload a core:
 its worst, eight instances on one core (SLOTS = FX1+FX2) with every knob
@@ -149,6 +160,6 @@ cost under modulation is held down by the warm start and the split above.
   about the same; further cuts are in the law's two Hermite responses and
   the steps' atan. Sixteen-step divides save little and leave the
   reference's bound.
-- The code size: 1,142 words needs a larger free run than one stock effect
+- The code size: 1,166 words needs a larger free run than one stock effect
   other than the reverbs gives.
 - The top octave's decay: the Hermite's loss off the unit circle.

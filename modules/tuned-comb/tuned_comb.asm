@@ -28,12 +28,15 @@
 ; error at phis, clamped to 3 .. 1,530 samples. The delay walks to L in a
 ; straight line, a 16th of the way a sample.
 ;
-; Per sample, each channel: v = herm(d), y += b (v - y), s = x + g y,
-; written at the advanced index (and its guard twin), out = x + m (s - x).
+; Per sample, each channel: v = herm(d), y += b (v - y), hp = x - dc
+; (rounded) and dc += hp/1024 (the input's DC blocker, about 6.9 Hz: a
+; positive loop's gain at DC is up to 500, and it sits outside the loop so
+; the pitch solve is untouched), s = hp + g y, written at the advanced index
+; (and its guard twin), out = x + m (s - x).
 ;
 ; The r7 block ($00..$3f, all zeroed at init):
 ;   $00 write index (persistent)    $01 delay d, Q11.12 (persistent)
-;   $02 slope (per block)           $03/$04 unused (the lowpass is at $31)
+;   $02 slope (per block)           $03/$04 L's input DC, high, low (persistent)
 ;   $05 b    $06 g                  $07 MIX run (persistent)  $08 MIX step
 ;   $09 primed                      $0a line base (init)      $0b FX2 flag (init)
 ;   $0c P table base                $0d P, Q12.11             $0e phi0
@@ -41,7 +44,7 @@
 ;   $13 log2(|g| b)/32              $14 k - 1 (0 or 1)        $15 rho
 ;   $16 psi   $18 lr (persistent)   $19 1/L
 ;   $1a L, Q12.11                   $1b f (the per-block Hermite's)
-;   $1c..$24 scratch (per block)    $25/$26 unused
+;   $1c..$24 scratch (per block)    $25/$26 R's input DC, high, low (persistent)
 
 ;   $27..$2a the last PTCH/TUNE/LP/FB words   $2b warm steps left   $2c steps this block
 ;   $2d iterating (LP closed)   $2e FB - 64 (2^-16)   $2f lr1 x 128
@@ -625,8 +628,9 @@ tq08z:
 ;   c1 = (T1 - TM)/2,  c3 = 3(T0 - T1)/2 + (T2 - TM)/2,  c2 = TM - T0 + c1 - c3
 ;   v  = ((c3 f + c2) f + c1) f + T0
 ; C1 = c1/8 and C3 = c3/8 rounded (their floors bias v, and the loop holds a
-; bias as DC); y += b (v - y) in 48 bits; s = x + g y truncated toward zero
-; (a rounded loop holds a limit cycle); out = x + m (s - x).
+; bias as DC); y += b (v - y) in 48 bits; hp = x - dc rounded, dc += hp/1024
+; in 48 bits; s = hp + g y truncated toward zero (a rounded loop holds a limit
+; cycle); out = x + m (s - x), the dry as it came.
         move    y:(r5)-,y1              ; T1
         tfr     y1,a    y:(r5)+n5,b     ; T2; r5 -> R's TM
         sub     x0,b                    ; T2 - TM
@@ -673,8 +677,18 @@ tq08z:
         move    a1,x:(r1)+
         move    a0,x:(r1)+
         move    a,x0                    ; y (limited)
+        move    x:(r7+$03),a            ; the input's DC, high
+        move    x:(r7+$04),a0           ; ... and low
+        tfr     x1,b                    ; the dry x
+        sub     a,b                     ; x - dc
+        rnd     b                       ; hp (a floor is a DC the loop holds)
+        move    b,y0                    ; hp (limited)
+        asr     #$a,b,b                 ; hp/1024, exact
+        add     b,a                     ; dc += hp/1024, 48 bits
+        move    a1,x:(r7+$03)
+        move    a0,x:(r7+$04)
         mpy     x0,y1,a
-        add     x1,a                    ; s, 56 bits
+        add     y0,a                    ; s = hp + g y, 56 bits
         tfr     a,b                     ; its sign
         abs     a
         move    r2,y1                   ; m
@@ -741,8 +755,18 @@ tq08z:
         move    a1,x:(r1)+
         move    a0,x:(r1)-              ; (r1 back to y R; L's two steps below)
         move    a,x0
+        move    x:(r7+$25),a            ; R's input DC
+        move    x:(r7+$26),a0
+        tfr     x1,b
+        sub     a,b
+        rnd     b
+        move    b,y0
+        asr     #$a,b,b
+        add     b,a
+        move    a1,x:(r7+$25)
+        move    a0,x:(r7+$26)
         mpy     x0,y1,a
-        add     x1,a
+        add     y0,a
         tfr     a,b
         abs     a
         move    r2,y1

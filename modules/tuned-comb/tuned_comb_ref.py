@@ -39,8 +39,10 @@ The DSP's structure, mirrored here:
   * the lines: N = 1,533 words a channel plus 3 guard words mirroring words
     0..2, so the four Hermite taps read ascending without a wrap;
     L at the slot base, R at +1,536; L is clamped to LMAX;
-  * per sample, each channel: v = herm(L), y += b (v - y), s = x + g y
-    (truncated toward zero in the DSP: no limit cycle), write s,
+  * per sample, each channel: v = herm(L), y += b (v - y), hp = x - dc
+    (rounded) and dc += hp/1024 (the input's DC blocker, about 6.9 Hz, outside
+    the loop so the pitch is untouched), s = hp + g y (truncated toward zero
+    in the DSP: no limit cycle), write s,
     out = dry + m (s - dry);
   * MIX glides as VIBRATO's run: 1/8 of the way a block, in a straight line,
     snapped within 128 LSBs; 127 = 1.0, 0 = the dry exactly.
@@ -57,6 +59,7 @@ GUARD = 3
 STRIDE = N + GUARD  # R's line at base + 1,536
 LMAX = 1530.0       # i + 2 <= N - 1 for the oldest tap
 LMIN = 3.0
+DCB_SHIFT = 10      # the input's DC blocker: dc += hp / 2^10, about 6.9 Hz
 
 NOTES = 96                       # A#0 .. A8
 F_A_SHARP_0 = 440.0 * 2 ** ((22 - 69) / 12)
@@ -375,6 +378,7 @@ class TunedComb:
         self.k = dict(PTCH=PTCH, FINE=FINE, LP=LP, FB=FB, MIX=MIX)
         self.lines = (Line(), Line())
         self.y = [0.0, 0.0]
+        self.dc = [0.0, 0.0]            # the input's DC blocker, per channel
         self.d = 0.0
         self.slope = 0.0
         self.b = 1.0
@@ -492,7 +496,13 @@ class TunedComb:
                 ln = self.lines[ch]
                 v = ln.herm(self.d)
                 self.y[ch] += self.b * (v - self.y[ch])
-                s = sat(dry + self.g * self.y[ch])
+                # the loop's input without its DC: a positive loop's gain at DC is
+                # 1/(1 - g), up to 500, and a source's DC under -60 dBFS came out
+                # of it near -17 dBFS. hp rounded to a word (a floor is a DC the
+                # loop would hold); the dry path keeps the input as it is
+                hp = round((dry - self.dc[ch]) * Q23) / Q23
+                self.dc[ch] += hp / (1 << DCB_SHIFT)
+                s = sat(hp + self.g * self.y[ch])
                 ln.push(s)
                 out.append(dry + m * (s - dry))
             outL.append(out[0])

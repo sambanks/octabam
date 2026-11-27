@@ -23,7 +23,8 @@ Gates:
                    at every note, with LP open and closed (where the gain is
                    not capped)
   DC            -> after a note dies, what is left is at most 40 LSB (the
-                   loop's rounding floor), no DC the loop holds
+                   loop's rounding floor), no DC the loop holds; and a DC at
+                   the input never reaches the loop (its blocker)
   every knob    -> renders at both extremes without dsp_host dying
   SLOTS=FX1+FX2 -> an FX2 instance runs live, bit-identical to FX1; eight
                    instances on one core each bit-identical to one alone,
@@ -463,6 +464,19 @@ for kw in (dict(PTCH=50, LP=60, FB=85), dict(PTCH=26, LP=40, FB=90), dict(PTCH=8
     worst = max(worst, max(abs(v) for v in L[int(SR * (2 * want + 0.3)):]))
 check("LP closed: two T60s after an impulse, under -80 dBFS (no subsonic ring outlasting the note)",
       worst < FS * 10 ** (-80 / 20), f"largest {20 * math.log10(max(worst, 1) / FS):.1f} dBFS")
+
+# the input's DC never reaches the loop: a positive loop's gain at DC is
+# 1/(1 - g), up to 500 at G_MAX, and a source's DC of -60 dBFS came out near
+# -10 dBFS (the waveform pushed against one rail, a mastering limiter pinned).
+# A constant -60 dBFS in L (and half of it, inverted, in R): after 1.5 s the
+# wet holds under -45 dBFS (the blocker's start dying in the comb's DC mode)
+worst = 0
+n = int(SR * 2)
+for kw in (dict(PTCH=26, LP=127, FB=127), dict(PTCH=50, LP=60, FB=120), dict(PTCH=74, LP=100, FB=110)):
+    L, R = _run([FS // 1000] * n, [-(FS // 2000)] * n, MIX=127, **kw)
+    worst = max(worst, max(abs(v) for v in L[-SR // 2:]), max(abs(v) for v in R[-SR // 2:]))
+check("a -60 dBFS DC at the input: the wet under -45 dBFS after 1.5 s (the loop never sees the DC)",
+      worst < FS * 10 ** (-45 / 20), f"largest {20 * math.log10(max(worst, 1) / FS):.1f} dBFS")
 
 # ---- 8. every knob at both extremes ------------------------------------------
 x8 = noise(15 * 40, 9, 0.9)
