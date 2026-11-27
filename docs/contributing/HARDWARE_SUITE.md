@@ -119,41 +119,28 @@ Failures found while running the suite on earlier images, and the module sets th
 - The SFX project list is cut at 31 layouts per project; pair and split layouts need `ot_matrix.py predict`
   ([HARDWARE_MATRIX.md](HARDWARE_MATRIX.md)).
 
-## v0.6 checks (`ot_v06.py`)
+## v0.6 checks (`ot_v06.py`, `ot_v06_audio.py`, `ot_v06_midi.py`)
 
-`tools/hw/ot_v06.py` runs the v0.6 items that need no panel step, over REMOTE (COMMAND 1 to 4 and PEEK). Not run on
-a unit yet.
+Results, pre-fix controls and the checks left for the panel: [HARDWARE_V06.md](HARDWARE_V06.md).
 
 ```bash
-.venv/bin/python3 tools/hw/ot_v06_build.py build out/v06b          # three projects + v06.json
-.venv/bin/python3 tools/hw/ot_v06.py suite --dest out/v06b         # images, projects, matrix runs, DISK MODE read, boots
+.venv/bin/python3 tools/hw/ot_v06_build.py build out/v06c                    # V06_OCT, V06_RIG, V06_VRB projects + v06.json
+.venv/bin/python3 tools/hw/ot_card.py load out/v06c/V06_OCT_01               # parks the unit on bank H first, then DISK MODE load
+.venv/bin/python3 tools/hw/ot_v06_audio.py wave-stop | cx-fold | verb | vca-key | octa303 | tracks PROG
+.venv/bin/python3 tools/hw/ot_v06_midi.py build out/v06m && ot_v06_midi.py run out/v06m
+.venv/bin/python3 tools/hw/ot_v06.py switch --names "<image>" --cycles N     # REMIX SWITCH self-boot soak
+.venv/bin/python3 tools/hw/ot_v06.py diskread --reads 6                      # needs V06_DISK_01 loaded, CLOCK SEND on
+.venv/bin/python3 tools/hw/ot_stallhunt.py --trials N                        # frame-log hunt (image built with tools/hw/framelog.patch)
 ```
 
-The images are `OCTABAM T1` (`octabam`), `V06-RIG T1` (`remixes/test/v06-rig`: CX OSC, VCA160, KEYBUS, REMOTE, USB,
-REMIX SWITCH), `OCTABAM-VRB T1` (`octabam-verbs`) and `STOCK 1.40C`, built with `make image REMIX=octabam BUILD=T1`
-and `make rmx REMIX=<remix> BUILD=T1`. `OCTABAM T1` is flashed; the rest are `.RMX` files in `/BRAIN/REMIXES`.
-No shipping remix carries CX OSC or VCA160, and the test remixes lack REMOTE, USB and REMIX SWITCH.
-
-| check | issue | project / image | pass when |
-|---|---|---|---|
-| boots | #1247, #1233, #1272 | every image change | COMMAND 3 returns within 150 s, the image asked for runs, MB_PARK (`0x41200038`) reads 3, the DSP counts |
-| `diskread` | #1264 | any project, CLOCK SEND on | no 64 KB block of one file differs between 6 reads; none starts `0f f8 00 00` in one read only |
-| OCTA303 T1+T2 | #1270 | `V06_OCT` / `octabam` | slot plays above -70 dBFS RMS, no flag |
-| WAVE T1+T2 | #1232 | `V06_OCT` / `octabam` | as above; no RINGS (tail silent after STOP) |
-| CX OSC T1 | #1263 | `V06_RIG` / `V06-RIG` | as above; no CLICKS |
-| VCA160 FX1, FX2 (def, dear) | #1219 | `V06_RIG` / `V06-RIG` | no flag |
-| VERBERATION FX2 (def, dear, modes 0, 2, 3) | #1234 | `V06_VRB` / `octabam-verbs` | no flag; RINGS is the stop kill |
-
-A machine slot is a FLEX track signed with the machine's Part signature, `Part + 0x3c + 30 * track`; the file offset
-(PART_BASE + 9 + 0x3c + 30 * track) is inferred from the port gates' RAM offsets, and a slot that reads silent is
-the symptom of a miss. The machines' PLAYBACK and SETUP values are the module's seeds: nothing writes them, so
-#1263's FOLD at DEC HOLD is not set by the project. Each pass is only a flag-free matrix run: LEVEL, STATIC and
-the other flags compare the slot with BASE, which has stimulus audio and no machine.
-
-A boot that does not return is the boot-screen stop of #1247; the run stops, and the unit needs a power-cycle.
-`out/hw/boot_ledger.tsv` has every attempt. Output: `out/hw/v06/<label>/summary.json` and the matrix reports under
-`out/hw/matrix/`.
-
-Not reachable over the cable (panel gestures, or no host-visible result): #1246 (AED), #1251 and #1252 (TEMPLATES),
-#1250 and #1229 (TEMPO BUS copy, paste and scene locks), #1255 (FRAME GUARD on an MKI with 8 recorders and 8 voices),
-#1219's KEY routing (no KEY value is set), #1266 (what MIDI LOOPBACK echoes is not written down).
+- Images: `octabam`, `test/v06-rig` (CX OSC, VCA160, KEYBUS, REMOTE, USB, REMIX SWITCH), `octabam-verbs`, built with
+  `make rmx REMIX=<remix> BUILD=<tag>` into `/BRAIN/REMIXES`.
+- A machine slot is a FLEX track signed with the machine's Part signature (`Part + 0x3c + 30 * track`; file offset
+  `PART_BASE + 9 + 0x3c + 30 * track`) with its PLAYBACK and SETUP seeded by `ot_v06_build.machine_slot`.
+- `ot_card.py load` sends program change 112 first: leaving DISK MODE reloads every bank except the current one, so edits
+  to a current bank never reached the unit.
+- Per-track audio: with USB TRACKS PRE, track `t` is channels `2t-2` and `2t-1`. The first START after a load is
+  silent; every check plays once and discards it.
+- `diskread` needs 1 MB requests and `F_NOCACHE`; 64 KB requests do not trigger #1264.
+- A boot that does not return is a REMIX SWITCH stop ([FAILURE_MODES.md](FAILURE_MODES.md)); the run stops and the unit
+  needs a power-cycle. `out/hw/boot_ledger.tsv` has every attempt.
