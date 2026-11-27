@@ -206,6 +206,8 @@ pe_loop:
         moveq   #REC,%d0
         mulu.l  %d0,%d1
         lea     %a4@(0,%d1:l),%a1      | a1 = this step's lock
+        movel   PMODE,%d0
+        bne.w   pe_push
         moveq   #0,%d0
         moveb   KROWS+(KFUNC>>3),%d0
         btst    #(KFUNC&7),%d0
@@ -241,6 +243,32 @@ pe_c1:  addl    %a0@(0x9a),%d1
         ble.s   pe_c2
         movel   %d1,%d0
 pe_c2:  moveb   %d0,%a1@
+        bra.w   pe_loop
+| A knob push (plk_ed_held_press_handle), as stock's page-1 toggle
+| 0x4005040c: the press locks an unlocked slot to the Part's value and
+| marks it new; the release takes off a lock the press found there.
+pe_push:
+        subql   #1,%d0
+        bne.s   pe_rel
+        movel   %d2,%d1
+        addql   #6,%d1
+        lsll    #2,%d1
+        lea     %a2@(0,%d1:l),%a0
+        tstl    %a0@(0x9a)             | a slot with no values takes no lock
+        beq.w   pe_loop
+        moveq   #0,%d0
+        moveb   %a1@,%d0
+        cmpil   #0xff,%d0
+        bne.s   pe_had
+        moveb   %a3@,%a1@              | locked to the Part's value
+        moveq   #1,%d0
+        movel   %d0,PFLAG
+        bra.w   pe_loop
+pe_had: clrl    PFLAG
+        bra.w   pe_loop
+pe_rel: tstl    PFLAG
+        bne.w   pe_loop
+        moveb   #0xff,%a1@             | release after a press on a lock: remove
         bra.w   pe_loop
 pe_commit:
         | Mirror stock's edited flag and pending trig-tap masks. Otherwise
@@ -1774,6 +1802,8 @@ NWMASK:  .long 0                        | banks whose p2lkNN.work was refused: n
 NEEDFILE: .long 0                       | bank + 1: read it from its file at the next bank load
 NVGEN:  .long   0                       | counts nv_save starts (see nv_save)
 EDITED: .long   0                       | set by a page-2 lock edit (the file pass reads it)
+PMODE:  .long   0                       | plk_edit's caller: 0 a turn, 1 a knob press, 2 its release
+PFLAG:  .long   1                       | the last press locked a slot: its release keeps it
 P2STAGE: .fill  8*REC,1,0xff            | the staging record, by track
 P2PEND: .fill   24*REC,1,0xff           | pending slots n = 0..2, index n*8 + track
 P2REC:  .fill   8*REC,1,0xff            | the trig record, by track
@@ -1795,8 +1825,35 @@ IOB:    .space  IOB_LEN                 | the stock file layer's buffer
 
         .text
         .globl plk_ed_claim, plk_ed_handle, plk_ed_copy_pre
+        .globl plk_ed_press_claim, plk_ed_press_handle
 plk_ed_handle:
         jmp plk_edit
+| edit.held_press: stock's trig-held knob push 0x4005040c(key, pressed),
+| keys 0x38..0x3d for knobs A..F. On FX SETUP it toggles the page-1 lock
+| of the slot behind the window (slot + page*6); page 2's is ours.
+plk_ed_press_claim:
+        subil #0x38,%d0
+        bra.s plk_ed_claim
+plk_ed_press_handle:
+        moveq #2,%d0                   | the release
+        tstl %sp@(8)
+        beq.s 1f
+        moveq #1,%d0                   | the press
+1:      movel %d0,PMODE
+        movel %sp@(4),%d0
+        subil #0x38,%d0
+        clrl %sp@-                     | ticks: none
+        movel %d0,%sp@-                | the slot
+        bsr.w pe_do
+        addql #8,%sp
+        movel PMODE,%d0
+        subql #2,%d0
+        bne.s 2f
+        moveq #1,%d0
+        movel %d0,PFLAG                | a stray release removes nothing
+2:      clrl PMODE
+        moveq #0,%d0
+        rts
 plk_ed_claim:
         tstl MIDITRK
         bne.s plk_ed_no

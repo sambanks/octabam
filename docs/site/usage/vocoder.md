@@ -1,18 +1,19 @@
-A ten-band channel vocoder after the Roland VP-330: the track's audio (a
-voice) shapes a carrier, built in or external. The output is mono on both
-channels. Version 0.2 puts the performance controls on page 1, where
-scenes, the crossfader, LFOs and parameter locks reach them.
+VOCODER is a ten-band channel vocoder modeled after the Roland VP-330. The
+track's audio (such as a voice) shapes either a built-in carrier or an external
+carrier, producing mono output on both channels. Version 0.2 moves the
+performance controls to page 1 so scenes, the crossfader, LFOs, and parameter
+locks can modulate them.
 
 ## Access
 
-An effect on a track: select the track, press FX2, and pick VOCODER.
-**It runs on FX2 of tracks 2, 4, 6 and 8 only.** On tracks 1, 3, 5 and 7,
-and on any FX1 slot, it passes audio through untouched. Two VOCODERs per
-DSP core play (tracks 1-4 share one core, 5-8 the other); a third on a core
-would overrun it, so the limit is built in. The even tracks pair with a
-NEIGHBOR machine: T1 drums into T2 NEIGHBOR + VOCODER, T3 into T4, and so
-on. Not in an official remix; build the test remix `vocoder`, or
-`vocoder-usb` to record it over USB.
+Select a track, press FX2, and choose VOCODER. **It runs on FX2 of tracks 2, 4,
+6, and 8 only.** On tracks 1, 3, 5, and 7, and in any FX1 slot, it passes audio
+through untouched. Each DSP core can run at most two instances (tracks 1–4
+share one core and tracks 5–8 share the other), so the slot restriction prevents
+core overruns. Placing it on even-numbered tracks also pairs naturally with a
+NEIGHBOR machine (for example, T1 drums routed into T2 NEIGHBOR + VOCODER, T3
+into T4, and so on). This module is not included in the official remixes; build
+the `vocoder` remix, or `vocoder-usb` to record it over USB.
 
 ![FX2 SETUP with VOCODER selected: MODE, SCAL, GLDE, RANG and KEY on its page 2.](../../img/vocoder/chooser.png)
 
@@ -20,30 +21,30 @@ on. Not in an official remix; build the test remix `vocoder`, or
 
 ## Operation
 
-- MODE INT: the carrier is built in, two sawtooths an octave apart at
-  NOTE. Turn NOTE, or parameter-lock it on the steps, and the vocoded voice
-  plays a melody. Play a voice, sample or live input through a THRU
-  machine.
-- MODE EXT: the carrier is the track's right channel, for example a THRU
-  track with the voice on input A and a synth on input B. The modulator is
-  the left channel; in INT it is left and right averaged. NOTE, BEND, GLDE,
-  WHSP and the scale shape the built-in carrier, so in EXT they do nothing;
-  GEND works in both modes.
-- BEND is a pitch wheel: put a scene on each side of the crossfader with
-  different BEND values. With BEND an octave up and a little WHSP, GEND on
-  the same fader goes from a male to a female voice.
-- With a scale chosen (SCAL), NOTE plays the nearest scale note at or below
-  the knob's note, so a sweep up never goes down. The display still shows
-  the knob's own note (C#3 in C MAJ plays C3). BEND is not quantised, and
-  GLDE glides between the scale notes.
-- GEND, WHSP, DRY and CONS follow their knobs over 8 ms, so a scene jump
-  lands without a click.
-- There is no level knob: the track's AMP page sets the level.
-- A project saved under 0.1 needs its defaults re-stamped before it plays
-  (`tools/hw/ot_project.py stamp-defaults <project> vocoder`): 0.1's LEVL
-  lands on WHSP and the voice turns to noise. A project with VOCODER on T3
-  or T7 now plays those tracks dry; move it to T4 or T8.
-- The VP-330's ensemble chorus is not modelled.
+- In MODE INT, the carrier is built in: two sawtooth oscillators an octave
+  apart tuned by NOTE. Turn NOTE or parameter-lock it on steps so a sample or
+  live input through a THRU machine plays melodies.
+- In MODE EXT, the carrier is the track's right channel (for example, a THRU
+  track with a voice on input A and a synth on input B), and the modulator is
+  the left channel. In INT mode, the modulator is the average of left and
+  right. NOTE, BEND, GLDE, WHSP, and the scale parameters control only the
+  built-in carrier and do nothing in EXT mode; GEND works in both modes.
+- BEND acts as a pitch wheel, which works well with different values locked on
+  opposite scenes of the crossfader. Combining an octave bend with a little
+  WHSP and GEND on the same crossfader shifts from a male to a female voice
+  character.
+- When a scale is chosen with SCAL, NOTE plays the nearest scale note at or
+  below the knob's pitch so upward sweeps never step downward. The display
+  still shows the knob's unquantized note (for example, C#3 in C MAJ plays
+  C3). BEND is not quantised, and GLDE glides smoothly between scale notes.
+- GEND, WHSP, DRY, and CONS follow knob changes over 8 ms so scene jumps land
+  without clicking.
+- There is no level knob; use the track's AMP page to set output level.
+- Projects saved under version 0.1 need their defaults re-stamped before
+  playback (`tools/hw/ot_project.py stamp-defaults <project> vocoder`): 0.1's
+  LEVL maps onto WHSP and turns the voice to noise. Projects with VOCODER on T3
+  or T7 now play those tracks dry; move those instances to T4 or T8.
+- The VP-330's ensemble chorus is not modeled.
 
 ## Parameters
 

@@ -1,15 +1,8 @@
-CHARACTER with a texture stage. The chain is fold → texture → saturate →
-tilt → compress → width → mix, and every knob of CHARACTER is unchanged.
-The one addition is TXTR on page 2, a lo-fi texture (mu-law companding,
-bit reduction, a sample hold and a blur) after the fold. At TXTR 0 the
-stage is skipped and the result is bit-identical to the plain station.
+CharTxtr is a variant of CHARACTER that adds a lo-fi texture stage. Audio flows through fold, texture, saturate, tilt, compress, width, and mix, with all standard CHARACTER parameters unchanged. The new TXTR knob on page 2 adds mu-law companding, bit reduction, sample-and-hold, and blur right after the wavefolder. When TXTR is set to 0, the texture stage is bypassed and the output is bit-identical to standard CHARACTER.
 
 ## Access
 
-An effect on a track: select the track, press FX1, and pick CharTxtr
-from the chooser. It takes DJ EQ's id, which one module can hold. Not in an official
-remix; build the test remix `character-txtr`. Four of them beside the reverb price a core at 2,751 of the
-3,120 cycles usable.
+Select a track, press FX1, and choose CharTxtr from the effect list. It uses DJ EQ's effect ID, so only one module using that ID can be included at a time. This module is not included in the standard remixes; build the `character-txtr` remix to use it. Running four instances alongside the reverb uses 2,751 of the 3,120 available DSP cycles per core.
 
 ![FX1 SETUP with CharTxtr selected: TAPE, KEY, KLVL and TXTR on its page 2.](../../img/character-txtr/chooser.png)
 
@@ -17,16 +10,13 @@ remix; build the test remix `character-txtr`. Four of them beside the reverb pri
 
 ## Operation
 
-- TXTR is one knob driving both of the texture's sliders: 0 is off, and
-  turning it up quantises from 16 down to about 4.1 bits, lengthens the
-  sample hold from 0 to 31 samples (one hold for both channels), and adds
-  the blur.
-- The rest of the page 1 and page 2 knobs are CHARACTER's.
+- TXTR controls the entire texture stage from one knob: 0 turns it off, and increasing it reduces bit depth from 16 down to roughly 4.1 bits, increases the shared stereo sample-and-hold from 0 to 31 samples, and adds blur.
+- All other knobs on pages 1 and 2 work the same way as in CHARACTER.
 
 ## Parameters
 
 | Page | Knob | What it does |
 |---|---|---|
-| 1 | DRV, FOLD, WDTH, COMP, TONE, MIX | as CHARACTER |
-| 2 | SAT, KEY, KLVL | as CHARACTER |
-| 2 | TXTR | 0-127, default 0: texture amount; 0 skips the stage |
+| 1 | DRV, FOLD, WDTH, COMP, TONE, MIX | Same as CHARACTER |
+| 2 | SAT, KEY, KLVL | Same as CHARACTER |
+| 2 | TXTR | 0-127, default 0: texture amount; 0 bypasses the stage |

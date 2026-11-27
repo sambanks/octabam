@@ -1,19 +1,22 @@
-A transient shaper. ATCK boosts or softens each onset; SUST lengthens or
-tightens each tail. No threshold: a quiet hit and a loud one are shaped the
-same, because the detector reads the shape of the envelope, not its level.
+TRANSIENT is a level-independent transient shaper. ATCK boosts or softens each
+onset, while SUST lengthens or tightens each tail. Because the detector tracks
+envelope shape rather than absolute amplitude, there is no threshold knob and
+quiet hits are shaped the same way as loud ones.
 
 ## Access
 
-An effect on a track: select the track, press FX2, and pick TRANSIENT from
-the chooser. There are five knobs, all on page 1.
+Select a track, press FX2, and choose TRANSIENT from the chooser. All five
+knobs are on page 1.
 
 ## Operation
 
-- ATCK up: more punch on drums and plucks. Down: soften the onset.
-- SUST up: more room and ring. Down: dry a loop out.
-- TIME sets how long an onset counts as the transient: 5 ms at 0, 50 ms at
-  127 (logarithmic).
-- OUT trims the output; MIX 0 is an exact passthrough, 127 full wet.
+- Raising ATCK adds punch to drums and plucks; lowering it softens the attack.
+- Raising SUST brings out room ambience and ring; lowering it dries out and
+  tightens a loop.
+- TIME sets how long an onset is treated as the transient, scaling
+  logarithmically from 5 ms at 0 to 50 ms at 127.
+- OUT trims the output level. MIX blends dry and wet signals, with 0 as an
+  exact passthrough and 127 as full wet.
 
 ## Parameters
 

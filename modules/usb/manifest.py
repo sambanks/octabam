@@ -94,6 +94,8 @@ def audio_inc(modules, remix):
     for i in range(0, XLV_WORDS, 8):
         lines.append("    .long " + ", ".join(f"0x{w:06x}" for w in words[i:i + 8]))
     lines.append(".endm")
+    import os
+    lines.append(f".set WD_TEST, {1 if os.environ.get('USB_WD_TEST') == '1' else 0}")
     return "\n".join(lines) + descriptors.audio_remix_inc(modules, remix)
 
 
@@ -240,7 +242,8 @@ MIDI_GATES = (Gate("tools/verify/verify_usbmidi_rx.py", stage="image"),
               Gate("tools/verify/verify_usb_midi_replug.py", stage="image"),
               Gate("tools/verify/verify_usbmidi_tx_ring.py", stage="image"),
               Gate("tools/verify/verify_usbmidi_isr.py", venv=True, stage="image"),
-              Gate("tools/verify/verify_usb_midi_disk.py", stage="image"))
+              Gate("tools/verify/verify_usb_midi_disk.py", stage="image"),
+              Gate("tools/verify/verify_usb_midi_din_mix.py", stage="image"))
 # MAIN/CUE aligned with the tracks (skips without a source project)
 GATE_ALIGN = Gate("tools/verify/verify_usb_align.py", remix_arg=False, venv=True, stage="image")
 # the stems against core 0's own MAIN, sample by sample, under the port (skips without a source project)
@@ -253,6 +256,7 @@ POKE_COMPOSITE = Poke(0x400e2004, H("000000"), H("ef0201"),
 MODULE = Module(
     name="usb", key="USB", kind=Kind.HYBRID,
     category=Category.MIDI_USB, author="markandrus/octemu", author_url="https://github.com/markandrus/octemu",
+    coauthors=(("Sam Banks", "https://github.com/sambanks"), ("Bryan T", "https://github.com/bryantysinger")),
     evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", image="OCTABAMB5", date="2026-10-19",
         note="octabam-core OCTABAMB5 (main 11d9f129), macOS on an arm64 Mac, 19 Oct 2026, with TRACKS PRE, MAIN, "
              "CUE and MIDI at their defaults (20 channels): enumeration (the MIDI port and a 20-channel input); "

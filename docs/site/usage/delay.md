@@ -1,50 +1,37 @@
-Stock's Echo Freeze delay: a 4-second stereo loop per track, with
-feedback, a band filter on the loop, ping-pong, tape glide, tempo sync
-and a repeater (LOCK). In Octabam Bus it is the master track's FX2,
-there for its beat repeat.
+DELAY is the stock Echo Freeze delay: a 4-second stereo delay line per track with feedback, a bandpass filter in the feedback loop, ping-pong routing, tape-style pitch glide, tempo sync, and a repeater mode (LOCK). In Octabam Bus, it is permanently assigned to the master track's FX2 slot for beat-repeat performance.
 
 ## Access
 
-FX2 on any track, as on a stock unit. In Octabam Bus: T8's FX2, locked;
-every other track's FX2 is SEND.
+Load DELAY in FX2 on any track just as on a stock unit. In Octabam Bus, DELAY is locked to T8's FX2 slot, while all other tracks use SEND in FX2.
 
 ## Operation
 
-- TIME is the delay length, in 256th notes: 64 is one beat (four 16th
-  notes). With SYNC on it follows the tempo; with SYNC off it is free.
-- FB is the feedback, VOL the delay output volume, SEND how much of the
-  signal is sent to the delay.
-- BASE and WDTH filter the loop: BASE the high-pass, WDTH the low-pass
-  relative to BASE.
-- X on makes it a ping-pong delay.
-- TAPE on glides between delay times when TIME changes; off jumps.
-- DIR is the dry mix; at minimum only the delay signal is heard.
+- TIME sets the delay length in 256th notes, where 64 equals one beat (four 16th notes). When SYNC is enabled, TIME follows the project tempo; when SYNC is off, it runs freely.
+- FB controls feedback, VOL sets the delay output volume, and SEND sets how much input signal feeds into the delay.
+- BASE and WDTH filter the feedback loop: BASE sets the high-pass cutoff, and WDTH sets the low-pass cutoff relative to BASE.
+- Enabling X switches the delay to ping-pong mode.
+- Enabling TAPE glides smoothly between delay times when TIME changes; disabling it jumps immediately.
+- DIR controls the dry level; at 0, only the delayed signal is heard.
 
 ## The repeater (lock)
 
-LOCK on makes the delay a repeater: with FB 127 and SEND 0 the buffer
-repeats endlessly; lower FB fades out gradually. TIME sets the repeat
-length. Any SEND above 0 stops the repeats. PASS routes the dry signal
-while LOCK is on: 1 mixes it in, 0 plays only the buffer (and VOL then
-does not affect the buffer signal).
+Turning LOCK on converts the delay into a buffer repeater. With FB at 127 and SEND at 0, the captured buffer loops indefinitely; lower FB values fade the repeats out gradually, and TIME controls the repeat length. Raising SEND above 0 stops the loop. PASS controls whether the dry signal passes through while LOCK is active: ON (1) mixes dry audio in, while OFF (0) outputs only the looping buffer (in which case VOL no longer affects the buffer level).
 
-On T8 in Octabam Bus this is the beat repeat: send a beat into the
-delay, then LOCK on with SEND 0 and PASS 0. The buffer holds whatever
-was sent in before the lock.
+On T8 in Octabam Bus, this acts as a master beat repeat: feed a beat into the delay with SEND, then turn LOCK on with SEND at 0 and PASS at 0 to loop whatever was captured before locking.
 
 ## Parameters
 
 | Page | Knob | Range | Default | What it does |
 |---|---|---|---|---|
-| 1 | TIME | 0–127 | 47 | delay length, 256th notes; 64 = one beat |
-| 1 | FB | 0–127 | 0 | feedback |
-| 1 | VOL | 0–127 | 127 | delay output volume |
-| 1 | BASE | 0–127 | 0 | high-pass on the loop |
-| 1 | WDTH | 0–127 | 127 | low-pass on the loop, relative to BASE |
-| 1 | SEND | 0–127 | 0 | how much is sent to the delay |
-| 2 | X | OFF / ON | OFF | ping-pong |
-| 2 | TAPE | OFF / ON | ON | glide between delay times |
-| 2 | DIR | 0–127 | 127 | dry mix; minimum = delay only |
-| 2 | SYNC | OFF / ON | ON | tempo sync |
-| 2 | LOCK | OFF / ON | OFF | repeater mode |
-| 2 | PASS | OFF / ON | OFF | in LOCK: 1 mixes dry in, 0 buffer only |
+| 1 | TIME | 0–127 | 47 | Delay length in 256th notes; 64 = one beat |
+| 1 | FB | 0–127 | 0 | Feedback |
+| 1 | VOL | 0–127 | 127 | Delay output volume |
+| 1 | BASE | 0–127 | 0 | High-pass filter on the feedback loop |
+| 1 | WDTH | 0–127 | 127 | Low-pass filter on the feedback loop, relative to BASE |
+| 1 | SEND | 0–127 | 0 | Input send level into the delay |
+| 2 | X | OFF / ON | OFF | Ping-pong mode |
+| 2 | TAPE | OFF / ON | ON | Pitch glide when changing delay time |
+| 2 | DIR | 0–127 | 127 | Dry mix; 0 outputs delay only |
+| 2 | SYNC | OFF / ON | ON | Tempo sync |
+| 2 | LOCK | OFF / ON | OFF | Repeater mode |
+| 2 | PASS | OFF / ON | OFF | In LOCK mode: ON (1) mixes dry in, OFF (0) outputs buffer only |

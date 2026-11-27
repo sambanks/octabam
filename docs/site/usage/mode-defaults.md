@@ -1,3 +1,4 @@
-Turning a MODE knob re-defaults the knobs around it to that mode's
-values. On stock, a MODE turn kept the previous mode's values. The same
-patch renames a mode's knobs on the unit's screen.
+When you turn a MODE knob, the surrounding parameters reset to that mode's
+default values instead of keeping the previous mode's values as stock
+firmware does. The same patch also updates the parameter names on screen to
+match the selected mode.

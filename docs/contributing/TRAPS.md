@@ -1308,6 +1308,19 @@ hollow line at **h=10** (not h=11, not a fill). Documented in
 `modules/cxosc/page.s` (header + `pg_ic_fdbk` / `pg_ic_decay`) and
 `modules/cxosc/README.md`.
 
+<a id="trap-displaced-instruction-resume"></a>
+### A detour must resume before every displaced instruction it still needs
+
+CX OSC's frame-builder detour at `0x4000d514` replaced the stock `movea.l
+(%a4),%a0` and resumed at `0x4000d51e`. That skipped the following stock
+`mvz.b (%a2),%d0`, which reloads the current START nibble before the second
+FLEX render call. The first render used the normalized START, while the second
+used stale `d0` from the original subframe offset; the packed frame then ended
+with that many silent samples. The audible result was a short dropout/click
+while turning FOLD with decay at infinity. Resume at `0x4000d51c` so the stock
+reload and subsequent offset calculation both run. `verify_cxosc` invokes the
+linked detour with stale `d0` and checks the stock continuation computes zero.
+
 <a name="trap-movem-sp"></a>
 
 ### `moveml %sp@` is the mode-2 form: it stores at sp and leaves sp unchanged
@@ -1787,6 +1800,62 @@ while a scene is held needs the same.
 **GATE.** `verify_tempo_bus`'s `scenes` boot (both orders, scene A and B,
 a push removing a lock, a page-2 cell, no lock on any other flat).
 
+<a id="trap-func-layer"></a>
+
+### A key record in a window's layer is not reached while FUNC is held: FUNC+REC and FUNC+STOP ran stock's
+
+**SYMPTOM.** TEMPO BUS's copy and paste, first built as REC and STOP records
+in the window's layer (`TB_LAYER`) that tested FUNC: under the port FUNC+REC
+copied nothing, and FUNC+STOP pasted nothing. The module's data (`CLIP`,
+`UST`) read all zero after the keys.
+
+**CAUSE.** FUNC's record in the main layer carries a sub-map, and the TEMPO
+layer `0x400bb4ec` carries one of its own (`0x400c52aa`). The dispatcher
+`0x40031734` appends every layer's sub-map for the key to the list before
+the press, so with FUNC held the list ends `… TB_LAYER, 0x400bfa1e,
+0x400c52aa` (list and cache read from the port with FUNC held). Handlers are
+looked up after that rebuild and the last layer naming a key wins (inferred
+from those dumps, not read from the dispatcher's code): REC and STOP resolved to stock's FUNC-map handlers
+(cache `0x46c7d8ee + code*24`: STOP `0x40060eb4`, REC `0x4005e038`). A
+record for FUNC itself in `TB_LAYER` (the scene keys' re-push) is never
+chosen either: the FUNC map has a FUNC record of its own.
+
+**FIX.** FUNC's record in `TB_KEYS` has press and release `-1` (stock's stay)
+and a sub-map of its own, `TB_FLAYER`, holding the REC and STOP records. The
+dispatcher chains every layer's sub-map, this module's last, so `TB_FLAYER`
+is above stock's FUNC maps while FUNC is held and gone at its release.
+FUNC+UP, DOWN and the rest still reach stock's FUNC map.
+
+**GATE.** `verify_tempo_bus`'s `copy/paste` and `copy/undo` boots: the
+values copied, changed and pasted read back from the live lanes. To find a
+layer order like this: dump `0x460d165c` (the list head), walk the `next`
+words, and read the handler cache with the key held.
+
+<a id="trap-shared-framer"></a>
+
+### Two MIDI inputs feed one framer: a USB message replaced DIN's running status
+
+**SYMPTOM.** With a DAW sending program changes over USB and the Octatrack's
+own MIDI out looped into its DIN input, patterns nobody chose were selected
+(#1248). Under the port, DIN `90 3c 64 3d 64`, USB `C0 05`, DIN `3e 64`
+parsed as `90 3c 64 90 3d 64 c0 05 c0 3e c0 64`.
+
+**CAUSE.** USB-MIDI events and DIN bytes reach one FIFO (`0x40092bbc`) and
+one framer (`0x40092bf4`), whose running status (`0x46100b70`), "second data
+byte pending" flag (`0x46100b74`) and half-received message at the write
+index are per framer, not per source. A USB event always carries its status,
+so it sets the running status DIN's later data bytes are read with.
+
+**FIX.** For a USB channel or system common event, `usbmidi_rx_decode` runs
+the framer until the FIFO is empty, saves its state at SR `0x2700`, enqueues
+and frames the event, and restores DIN's state (`usbmidi_rx_rs_save` /
+`_restore`). Anything else that injects bytes into this FIFO needs the same;
+MIDI LOOPBACK posts whole messages to the MIDI thread's queue instead.
+
+**GATE.** `verify_usb_midi_din_mix`: running-status pairs, a USB message
+between a DIN message's two data bytes, a three-byte USB message, and a DIN
+SysEx followed by a stray data byte.
+
 <a id="trap-late-frame"></a>
 **A FRAME INTERRUPT THAT ENTERS ABOUT 150 µs LATE STOPS THE DSP'S FRAME
 EXCHANGE.** At START and at a program change one frame interrupt runs 475 to
@@ -1801,7 +1870,7 @@ every frame interrupt and no capture. Cost: the 0.5 hardware suite parked, a
 day of first-START trials, and stalls earlier put down to the modules that
 happened to move the timing (the CX OSC and STEM REC entries in
 `FAILURE_MODES.md` have the same signature; not re-run). The mechanism on the
-DSP side is inferred, not measured. Fix: FRAME GUARD holds an entry 140 to
+DSP side is inferred, not measured. Fix: FRAME GUARD holds an entry 110 to
 190 µs late until it is 190 µs late (`modules/frame-guard/README.md`); with
 it, 32 first STARTs and 192 program changes without a stall. Rule: ColdFire
 time added to the frame interrupt can cause or cure a DSP stall by a few

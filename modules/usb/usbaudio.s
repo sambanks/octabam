@@ -87,6 +87,8 @@
 .set QH0_OUT_PTR,0x46c8ce18         | -> EP0 OUT dQH
 .set ENDPTCTRL3, 0xfc0b01cc
 .set USBCMD,     0xfc0b0140
+.set OTGSC,      0xfc0b01a4         | bit 11: B session valid (VBUS), bit 19: its change flag
+.set WD_FRAMES,  8000               | the attach watchdog's wait: about 3 s of frames
 .set ATDTW,      0x00004000         | USBCMD bit 14: the add-dTD tripwire
 .set QH_EP3IN,   0x4ec949c0         | EP3 IN dQH, the fallback when ENDPTLISTADDR
                                     | reads outside SDRAM (audio_qh_resolve)
@@ -959,8 +961,69 @@ audio_ep3_flush:
     movel   %d2,%a3@+
 .endm
 
+| ---- USB attach watchdog -----------------------------------------------------
+| Stock attaches only from the OTG session-valid interrupt: BSVIS with BSV
+| set calls 0x4001d630, which sets USBCMD.RS, and nothing else does. After a
+| REMIX SWITCH the new image's start-up enables the interrupt (BSVIE) with
+| the flag already gone about one boot in 150, and the unit then runs with no
+| USB device (REMOTE's OTGSC watch, 27 Nov 2026: flags 0x20 instead of 0x2d,
+| USBCMD never 1). This runs the interrupt's session start when VBUS is valid
+| and the controller has not been running for WD_FRAMES frames once the
+| start-up has armed the interrupt (the first version, which did not wait for
+| that, ran the session start in every boot: stock sets RS later than 3 s in). The routine is
+| the interrupt's (0x4001e946), so a host that is attached is not touched.
+| WD_TEST: the run bit is cleared once, when the controller runs with BSVIE armed.
+usb_attach_wd:
+    lea     -16(%sp),%sp
+    moveml  %d0-%d1/%a0-%a1,%sp@
+    .if WD_TEST
+    tstl    wd_age                  | once: when the controller runs with BSVIE armed, the run bit off
+    bnes    .Lwd_notest
+    movel   USBCMD,%d0
+    btst    #0,%d0
+    beqs    .Lwd_notest
+    movel   OTGSC,%d1
+    btst    #27,%d1
+    beqs    .Lwd_notest
+    moveq   #1,%d1
+    movel   %d1,wd_age
+    bclr    #0,%d0
+    movel   %d0,USBCMD
+.Lwd_notest:
+    .endif
+    movel   USBCMD,%d0
+    btst    #0,%d0                  | RS: the controller is running
+    bnes    .Lwd_idle
+    movel   OTGSC,%d0
+    btst    #11,%d0                 | BSV: VBUS is valid
+    beqs    .Lwd_idle
+    btst    #27,%d0                 | BSVIE: the start-up has armed the interrupt; with the flag
+    beqs    .Lwd_idle               | pending it fires at once, so RS still clear after WD_FRAMES is a lost edge
+    movel   wd_count,%d0
+    addql   #1,%d0
+    movel   %d0,wd_count
+    cmpil   #WD_FRAMES,%d0
+    bcss    .Lwd_out
+    clrl    wd_count
+    movel   wd_fired,%d0            | readable over REMOTE's PEEK: how often the race happened
+    addql   #1,%d0
+    movel   %d0,wd_fired
+    jsr     0x4001d630              | the interrupt's session start
+    pea     0x400b986a              | and its message to the UI queue
+    pea     0x460d17ae
+    jsr     0x40000c3c
+    addql   #8,%sp
+    bras    .Lwd_out
+.Lwd_idle:
+    clrl    wd_count
+.Lwd_out:
+    moveml  %sp@,%d0-%d1/%a0-%a1
+    lea     16(%sp),%sp
+    rts
+
     .global audio_frame_shim
 audio_frame_shim:
+    bsr     usb_attach_wd
     | The producer runs only while the host asks for the stream (usbaudio_alt,
     | the SET_INTERFACE request, so from the block after it). His build idled
     | until alt 1 and had 127 underruns at startup on hardware, which is why
@@ -2188,6 +2251,10 @@ uac2_clock_valid: .byte 0x01
 
 | ---- state -------------------------------------------------------------------
     .balign 4
+wd_count: .long 0                   | frames the attach watchdog has seen VBUS with the controller stopped
+wd_age:   .long 0                   | WD_TEST: frames counted
+    .global wd_fired
+wd_fired: .long 0                   | times the attach watchdog ran the session start
     .global usbaudio_consumed, usbaudio_acc, usbaudio_overruns
     .global usbaudio_underruns, usbaudio_lastn, usbaudio_lastfill
     .global usbaudio_lastbank, usbaudio_bankdup, usbaudio_srcjump

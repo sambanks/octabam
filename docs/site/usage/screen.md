@@ -19,9 +19,16 @@ From the octabam checkout:
 python3 tools/hw/screen_stream.py
 ```
 
-On the first run it clones elektron-screen-tool at a pinned commit into `~/.cache/octabam/elektron-screen-tool`
-(`OCTABAM_SCREEN_DIR` changes the place), creates a Python environment there and installs `python-rtmidi`. With uv installed (`brew install uv`) the environment uses a Python 3.13 that uv downloads (`--python-preference only-managed`; uv would otherwise take a matching Homebrew Python, which can be the Intel one), which includes tkinter and is built for the machine's architecture; without uv it uses the `python3` that runs the script. It then
-finds the Octatrack's MIDI input and output and opens the window. Later runs go straight to the window.
+On the first run, the script clones `elektron-screen-tool` at a pinned commit
+into `~/.cache/octabam/elektron-screen-tool` (override the location with
+`OCTABAM_SCREEN_DIR`), creates a Python virtual environment there, and
+installs `python-rtmidi`. If `uv` is installed (`brew install uv`), it
+downloads a managed Python 3.13 build (`--python-preference only-managed`)
+that includes `tkinter` and matches your machine's architecture, avoiding a
+mismatched Homebrew Python such as an Intel build on Apple Silicon. Without
+`uv`, it uses the `python3` binary running the script. It then locates the
+Octatrack's MIDI input and output ports and opens the display window.
+Subsequent runs open the window directly.
 
 | Option | Does |
 |---|---|
@@ -81,14 +88,18 @@ A window opens with the Octatrack's display. Close the window or press Ctrl+C in
 
 ### If no ports are listed
 
-- USB: **PROJ > BRAIN > SETTINGS > USB > MIDI** is ON (MIDI OFF leaves the computer storage and audio only).
-- The flashed image contains the SCREEN module, and the USB module for the USB cable.
-- DIN: a MIDI interface connects the Octatrack's MIDI OUT and IN to the computer.
+- Over USB, verify that **PROJ > BRAIN > SETTINGS > USB > MIDI** is set to ON
+  (when MIDI is OFF, the computer sees only storage and audio).
+- Verify that the flashed image includes the SCREEN module, plus the USB
+  module if you are connecting over USB.
+- Over DIN MIDI, make sure a MIDI interface connects both the Octatrack's MIDI
+  OUT and MIDI IN to the computer.
 
 ## Operation
 
-`screendump` is pointed at the Octatrack's ports with the instrument id `10 00` (`--probe-id 10 00`; `05 00` is
-answered too). The reply goes back on the transport the request came on.
+Point `screendump` at the Octatrack's MIDI ports using instrument ID `10 00`
+(`--probe-id 10 00`; `05 00` is also accepted). Replies are returned over the
+same transport that sent the request.
 
 ## Wire format
 
@@ -98,8 +109,10 @@ answered too). The reply goes back on the transport the request came on.
 | Reply | 1,194 bytes: `F0 00 20 3C 10 00`, 7-bit-encoded body, `F7` |
 | Body | msgId, replyTo, cmd `84`, version 1, width 128, height 64, length 1024, 1,024 pixel bytes |
 
-The picture is the frame the panel was last sent, so MIXER, the PROJECT menu, SETUP windows and popups are in
-it, not only the page underneath.
+The captured image is the last frame sent to the display panel, so overlays
+such as MIXER, the PROJECT menu, SETUP windows, and popups are included along
+with the underlying page.
 
-On USB the reply is one 1,592-byte EP2 IN transfer. On DIN it takes 0.38 s at 31,250 baud, so about 2.6
-screens per second; USB has no such limit.
+Over USB, each reply fits in a single 1,592-byte EP2 IN transfer. Over DIN
+MIDI at 31,250 baud, a frame takes 0.38 s (about 2.6 frames per second); USB
+does not have that bottleneck.

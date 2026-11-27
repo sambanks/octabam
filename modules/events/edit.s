@@ -23,6 +23,17 @@ ed_held:
     movem.l %d2-%d7/%a2-%fp,(%sp)
     jmp 0x400508ec
     .endif
+    .if ev_edit_held_press_count
+    /* Stock's trig-held knob push (key 0x38..0x3d, pressed), press and release. */
+    .global ed_held_press
+ed_held_press:
+    EV_SAVE
+    ev_edit_held_press
+    EV_RESTORE
+    lea -76(%sp),%sp
+    movem.l %d2-%d7/%a2-%fp,(%sp)
+    jmp 0x40050414
+    .endif
     .if ev_edit_scene_held_count
     /* Stock's scene-lock knob handlers (encoder, ticks), installed over every
      * encoder while a scene key is held (0x46c7dede + 20 * encoder): SCENE A's

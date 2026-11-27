@@ -1,10 +1,11 @@
-**Scrape / grit on FX2.** Dry input blended with shaped noise that an
-audio-rate LFO (or a neighbour track's envelope) chops open. Vinyl crackle
-and AM dirt that rides the beat. Replaces **COMB FILTER**.
+VOID is a noise and grit effect for FX2 that replaces **COMB FILTER**. It
+blends the clean dry input with shaped noise gated by an audio-rate LFO or a
+neighbour track's envelope, creating vinyl crackle and rhythmic AM texture.
 
-Noise gets **HPF** → **COLR** → **DRV** → **FDBK** → AM. Dry stays clean.
-**BAL** is the blend. There is no separate dry/wet **MIX**. SETUP **SRC**
-picks what opens the noise:
+The noise passes through **HPF**, **COLR**, **DRV**, **FDBK**, and amplitude
+modulation while the dry signal stays clean. **BAL** controls the balance
+between dry and noise (there is no separate **MIX** knob), and **SRC** on the
+SETUP page selects what modulates the noise:
 
 ![VOID SRC=LFO: RATE/SHPE LFO amplitude-modulates the noise.](../../img/void/path.svg)
 
@@ -12,27 +13,31 @@ picks what opens the noise:
 
 ## Access
 
-Select a track, press **`[FX2]`**, pick **VOID**.
+Select a track, press **`[FX2]`**, and choose **VOID**.
 
 - Page 1: **BAL**, **RATE**, **COLR**, **HPF**, **DRV**, **FDBK**
-- Page 2 (SETUP): **SHPE**, **DPTH**, **WID**; **SRC** bottom left
+- Page 2 (SETUP): **SHPE**, **DPTH**, **WID**, and **SRC** (bottom left)
 
 ## Operation
 
-- **BAL.** Dry↔noise (**0 = exact dry**, **127 = pure noise**). AM, **DRV**
-  and **FDBK** leave the dry alone.
-- **COLR** / **HPF.** Darken or thin the **noise** only. **COLR** 127 =
-  open. **HPF** 0 = bypass.
-- **SRC** (SETUP): **LFO** (default) uses **RATE**/**SHPE**. **NBR** uses
-  the previous track's **keybus envelope**, level only, with no neighbour
-  audio into VOID. Quiet neighbour → noise stops. Dry/**BAL** is still this
-  track. On track 1, **NBR** reads T1's own keybus.
-  The remix must include **KEYBUS**. With SIDECHAIN_COMPRESSOR, it must also
-  include **SC KEYBUS BRIDGE**.
-- **DPTH.** How hard the modulator opens the noise (both **SRC** modes).
-- **WID.** Stereo grit from a second noise through the same
-  **HPF**/**COLR**/**DRV** (no **FDBK**). **0 = mono**.
-- **FDBK** + **DRV** screams. Feedback is AC-coupled so it keeps scraping.
+- **BAL** crossfades between dry audio and noise (**0** is exact dry; **127**
+  is pure noise). AM, **DRV**, and **FDBK** affect only the noise path.
+- **COLR** and **HPF** filter the noise path only. **COLR** at 127 leaves the
+  low-pass filter open, and **HPF** at 0 bypasses the high-pass filter.
+- **SRC** (SETUP) chooses the AM source. **LFO** (default) uses the internal
+  LFO controlled by **RATE** and **SHPE**. **NBR** uses the previous track's
+  **keybus envelope** (level only, with no neighbour audio entering VOID), so
+  the noise stops when the neighbour is silent while dry audio and **BAL**
+  still use this track. On track 1, **NBR** reads T1's own keybus. The remix
+  must include **KEYBUS** (and **SC KEYBUS BRIDGE** when used alongside
+  SIDECHAIN_COMPRESSOR).
+- **DPTH** sets how strongly the modulator opens the noise in both **SRC**
+  modes.
+- **WID** adds stereo grit using a second noise generator routed through the
+  same **HPF**, **COLR**, and **DRV** stages (without **FDBK**). At **0**, the
+  noise is mono.
+- Combining **FDBK** and **DRV** produces intense resonance. The feedback loop
+  is AC-coupled so it continues scraping without latching.
 
 ## Parameters
 

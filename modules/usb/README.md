@@ -147,6 +147,37 @@ port only.
 `usbmidi_rx_sysex` (usbmidi.s) is set to 1 whenever the decoder enqueues an `F0`. SCREEN reads and
 clears it at every SysEx to answer on the transport the request came on (`modules/screen/README.md`).
 
+### USB and DIN input together (#1248)
+
+USB MIDI and DIN MIDI can arrive at the same time without corrupting each
+other. A DIN sender that uses running status (the Octatrack's own MIDI out
+over a cable, most Elektron boxes, most hardware sequencers) keeps its notes
+and CCs when USB messages arrive between its bytes.
+
+Both inputs reach one FIFO and one stock framer, which keeps one running
+status (`0x46100b70`), one "second data byte pending" flag (`0x46100b74`) and
+a half-received three-byte message at its buffer's write index
+(`0x46100b5c`). Without help, a USB channel message replaced DIN's running
+status: after a USB program change, every DIN data byte that followed parsed
+as a program change, each one a pattern change.
+
+So for a USB channel message (CIN `8`..`E`) or a two- or three-byte system
+common one (CIN `2`, `3`), the decoder:
+
+1. runs the framer until the FIFO is empty, at the SR the USB ISR entered with;
+2. at SR `0x2700`, runs it again for anything that arrived, and saves the
+   framer's state (`usbmidi_rx_rs_save`);
+3. enqueues the USB message and runs the framer until it is parsed;
+4. puts DIN's state back, its half-received message at the new write index
+   (`usbmidi_rx_rs_restore`).
+
+No DIN byte can arrive between steps 2 and 4: the UART holds it. Realtime
+bytes (clock, transport) never touch the running status and are enqueued as
+before. A USB SysEx is left as it was, since it spans several packets and
+needs the framer's state carried between them. A DIN SysEx in progress is
+ended by the USB message's status byte, as in stock. Gate:
+`verify_usb_midi_din_mix`.
+
 ### Clock (6 Oct 2026)
 
 Reported by Kazeko (MKI, Discord, 6 Oct 2026): with USB MIDI clock the
@@ -267,6 +298,39 @@ same port:
 
 Not measured on a unit: host-to-unit MIDI after a replug (port only), many
 replugs, host sleep and wake, a hub.
+
+### Attach watchdog (27 Nov 2026)
+
+Stock attaches only from the OTG session-valid interrupt: BSVIS with BSV set
+calls `0x4001d630`, which sets `USBCMD.RS` (`0x4001e91c` region; nothing else
+calls it). After a REMIX SWITCH the new image's start-up arms the interrupt
+(BSVIE) and the flag has to be pending then.
+
+Measured on one MKII (27 Nov 2026) with REMOTE watching `USBCMD`, `PORTSC1` and
+`OTGSC[31:16]`: in 160 boots after a REMIX SWITCH the first poll read the flag
+byte `0x2d` (BSVIS set), BSVIE was then armed and `USBCMD` went to 1 at once.
+One boot read `0x20` (BSVIS clear), BSVIE armed, and `USBCMD` stayed 0: the unit
+ran with its project loaded and no USB device on the host; a re-plug did not
+bring it back, a power cycle did. The BSV status bit was not watched, so VBUS
+not valid during that boot (an unseated cable was found the same day) fits it
+too.
+
+`usb_attach_wd`, called at the entry of `audio_frame_shim`: when `OTGSC.BSV` and
+`OTGSC.BSVIE` are set and `USBCMD.RS` has stayed clear for `WD_FRAMES` (8,000,
+about 3 s of frames), it runs `0x4001d630` and posts `0x400b986a` to the UI
+queue `0x460d17ae`, as the interrupt does. A host that is attached is not
+touched. `wd_fired` counts the runs (PEEK).
+
+- A first version without the BSVIE condition ran in every boot (39 of 39
+  boots read `wd_fired` 1): stock sets RS more than 3 s after the frames start.
+- Test build (`USB_WD_TEST=1` in the environment of the build: RS cleared once
+  when the controller runs with BSVIE armed): `wd_fired` read 1 and the unit
+  was back on USB.
+- Real build: `wd_fired` 0 in 51 boots in a row (the 52nd boot stopped on the
+  boot screen, a different stop). `verify_usbmidi_isr`, `verify_usb_midi_replug`
+  and `verify_usb_align` pass.
+- Not measured: the watchdog catching a real lost edge (about one boot in 150
+  without it).
 
 ### Open
 

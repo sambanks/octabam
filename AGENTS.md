@@ -206,6 +206,7 @@ moment it costs real work, and add its line here.
 - [The page plane `0x46c7e0ea` is not the screen](docs/contributing/TRAPS.md#trap-page-plane) — windows are other layers the flush composites; the shown frame is `[0x400b970c]`; check against the decoded panel stream.
 
 - [Stock icon blit: bit 31 is the bottom row](docs/contributing/TRAPS.md#trap-icon-bit31) — `lsll` nudges DOWN, `lsrl` UP; CX OSC FDBK = `lsll #1`, DEC HOLD = hollow h=10.
+- [A detour must resume before every displaced instruction it still needs](docs/contributing/TRAPS.md#trap-displaced-instruction-resume) — CX OSC's skipped START reload left the second FLEX render using stale offset bits.
 
 - [A shared string helper's bound cut the load's path](docs/contributing/TRAPS.md#trap-strcat-bound) — REMIX SWITCH's 30-byte `strcat` cut `/BRAIN/REMIXES/` + a name over 14 characters; bound each buffer at the buffer, and give a fixture the longest name the build writes.
 
@@ -257,6 +258,9 @@ moment it costs real work, and add its line here.
 - [A held scene replaces every encoder's handler](docs/contributing/TRAPS.md#trap-scene-encoders) — `0x40053498` over the SETUP editors; a panel gesture's gate drives the panel.
 - [A byte read from a long track index selects T1](docs/contributing/TRAPS.md#trap-seq-fx-context) — SEQ reads the full track index and passes the bank and Part separately.
 - [A held scene's input layer goes over a window's](docs/contributing/TRAPS.md#trap-scene-layer) — the scene key's sub-map is pushed on top before its press runs; TEMPO BUS re-pushes its layer from its own scene-key record.
+
+- [A key record in a window's layer is not reached while FUNC is held](docs/contributing/TRAPS.md#trap-func-layer) — FUNC's sub-maps go above the window and a FUNC record there is never chosen; give FUNC's record a sub-map layer of your own (TEMPO BUS `TB_FLAYER`).
+- [Two MIDI inputs feed one framer: a USB message replaced DIN's running status](docs/contributing/TRAPS.md#trap-shared-framer) — bytes injected into `0x40092bbc` share the framer's running status with DIN; save and restore it around them (`usbmidi_rx_rs_save`), or post whole messages to `0x46c7e974`.
 - [A frame interrupt entering about 150 µs late stops the DSP's frame exchange](docs/contributing/TRAPS.md#trap-late-frame) — START and program changes; ColdFire time added to the frame interrupt moves it on or off the window; FRAME GUARD holds a late entry to 190 µs.
 - [Dropping a stock hold to keep a window open can drop the hold's release bookkeeping](docs/contributing/TRAPS.md#trap-hold-release-toggle) — LOCK EDIT's re-hold audition lost the step trig until `le_trighold` cleared stock's `0x460d1a9e` itself.
 

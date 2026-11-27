@@ -40,6 +40,7 @@ pattern.
 | Gesture | Result |
 |---|---|
 | **`[TRACK]`** + **`[PAGE]`** | Open SEQ on that track |
+| **`[MIDI]`** | Switch the open SEQ between the audio and MIDI track with the same number |
 | **`[NO]`** | Close the window |
 | Bare **`[PAGE]`** | Stock pattern pages / step banks; SEQ stays open |
 | Another **`[TRACK]`** while open | Switch SEQ to that track |
@@ -116,13 +117,14 @@ On audio tracks, Harmony controls the **SRC** / **PTCH** destination.
 sets their pitch span around the Part's **PLAYBACK PTCH**. **D** **PHRS**
 chooses RAND, UP, DOWN, ALT or TRI for the generated pitches. New tracks
 start at RAND. **E** **JUMP**
-sets the spacing between successive phrase positions from 0 to 127: 0
-advances by one scale position; higher values skip farther. UP and DOWN
+sets phrase spacing from 0 to 127. For UP, DOWN, ALT and TRI, 0 advances
+by one scale position and higher values skip farther. RAND uses 0 for
+one-scale-degree moves; higher values allow wider moves. UP and DOWN
 start at the Part pitch and move in the selected direction, wrapping within
 the **DPTH** pitch span. ALT and TRI traverse that span from its lowest
 pitch. Sample playback pitch locks use whole-semitone steps. At **DPTH**
-127, sample playback spans up to 12 semitones in either direction; synth
-and CX pitch span up to 24.
+127, sample playback spans up to 12 semitones in either direction; FM, SY
+and CX pitch span up to 64 semitones, limited by the PTCH range.
 
 On audio tracks, **C** and **F** are blank.
 
@@ -144,7 +146,7 @@ chord shape and inversion. **JUMP** is not used for MIDI ARP destinations.
 
 | **PHRS** | Pitch order |
 |---|---|
-| **RAND** | Choose a random direction for each move through the in-scale pitches. **JUMP** sets the scale-degree distance between neighboring hits. At a **DPTH** edge, the walk turns around so the interval stays the same. This is the default. Filling again rerolls the sequence without changing the controls. |
+| **RAND** | Choose a random direction for each move through the in-scale pitches. **JUMP** controls the maximum scale-degree move between hits. At **JUMP** 0, each move is one scale degree; higher values allow wider moves, up to the full **DPTH** range at **JUMP** 127. At a **DPTH** edge, the walk reflects into the range. If that would repeat the previous pitch, RAND moves one scale degree toward the edge. This is the default. Filling again rerolls the sequence without changing the controls. |
 | **UP** | Start at the Part pitch and move upward through the in-scale pitches. Wrap to the bottom of the **DPTH** span. |
 | **DOWN** | Start at the Part pitch and move downward through the in-scale pitches. Wrap to the top of the **DPTH** span. |
 | **ALT** | Rise from the lowest pitch to the highest, then descend without repeating the peak. |
@@ -160,15 +162,18 @@ mode's intervals rather than the melodic **DPTH** span.
 Each piano roll shows 64 MIDI **NOTE** hits in C major, ROOT C, with Part
 **NOTE** C3 and **DPTH** 32. The pitch range is C2–C4. The **JUMP** 0, 64
 and 127 rolls use identical settings except for **JUMP**. Each roll uses the
-same seed so the random directions are comparable; **JUMP** changes the
-scale-degree distance while the notes stay within the same pitch range.
+same seed so the random moves are comparable; **JUMP** changes the maximum
+move while the notes stay within the same pitch range.
 
 ##### RAND
 
-RAND chooses a starting in-scale pitch, then moves a random direction by the
-scale-degree distance set by **JUMP**. At either **DPTH** edge, it turns
-around instead of wrapping, so the absolute interval stays consistent;
-refilling chooses a new starting pitch and direction sequence.
+RAND chooses a starting in-scale pitch at random from the **DPTH** range, then
+makes random moves within a maximum scale-degree distance set by **JUMP**.
+At **JUMP** 0, each move is one scale degree. Higher **JUMP** values allow
+wider moves, up to the full **DPTH** range at **JUMP** 127. At either edge,
+the walk reflects into the range instead of wrapping. If a reflected move
+would repeat the previous pitch, RAND moves one scale degree toward that edge.
+Refilling chooses a new starting pitch and move sequence.
 
 ![RAND pitch rolls for JUMP 0, 64, and 127.](../../img/seq/phrase-rand.png)
 

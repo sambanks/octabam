@@ -1,22 +1,25 @@
-The bus client: two knobs that send this track to the two engines. DEL is
-this track's level into the delay (track 1), REV its level into the reverb
-(track 5). Each engine's wet comes out on the track that hosts it. DEL 0
-and REV 0 is indistinguishable from no effect.
+SEND is the bus client effect. It provides two knobs that route the track's
+audio to the shared bus effects: **DEL** sets the send level to the delay on
+track 1, and **REV** sets the send level to the reverb on track 5. Each
+engine's wet output plays on the track hosting that engine. With both DEL and
+REV at 0, the track passes through unchanged.
 
 ## Open Send
 
-On every track except 1, 5 and 8, FX2 is SEND (a new part is born that
-way; the FX2 chooser cannot change it). Page 1 has the two knobs.
+On every track except tracks 1, 5, and 8, FX2 is pre-assigned to SEND in new
+Parts and cannot be changed in the FX2 chooser. Page 1 displays the two send
+knobs.
 
 ## Set the sends
 
-- Raise DEL to hear the track in the delay's repeats; raise REV for the
+- Raise **DEL** to feed the track into the bus delay repeats, and raise
+  **REV** to feed it into the reverb tail.
+- The reverb can also receive the delay's repeats via the reverb's **DLY**
+  knob (in the TEMPO window); raising DLY washes the delayed signal into the
   reverb tail.
-- The reverb also hears the delay's repeats through the reverb's DLY knob
-  (TEMPO window): with DLY up, a delayed signal washes into the tail.
-- Track 1's and track 5's FX2 pages draw these same two knobs, and nothing
-  else: DEL feeds the delay, REV feeds the reverb.
-- The delay follows the project tempo; its TIME knob sticky-snaps to tempo
+- Track 1 and track 5 show these same two knobs on their FX2 pages: DEL feeds
+  the delay and REV feeds the reverb.
+- The delay follows the project tempo, and its **TIME** knob snaps to tempo
   divisions.
 
 ## Parameters

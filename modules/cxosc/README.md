@@ -104,8 +104,22 @@ ROM hooks, e.g. MIDI note-on). Not an FX2 id — machine signature `"CX", 1`.
 
 ## Cost / how many CX tracks
 
-One mono voice under Unicorn: about **2035** instructions/frame (peak ~2074;
-`verify_cxosc`).
+One mono voice under Unicorn: mean **1881** instructions/frame (peak **1920**;
+`verify_cxosc`, base knobs). The morphs, PWM and FOLD add to that:
+
+| Setting (one voice, Unicorn instructions/frame) | before | now |
+|---|---:|---:|
+| MOD 0, PWM centre, FOLD 0 | 2376 | 1954 |
+| MOD 32, PWM 30, FDBK 60 | 6151 | 3215 |
+| MOD 32, CAR 40, PWM 30, FDBK 60, INDX 100, DEC 40, FOLD 60 | 8614 | 4502 |
+| MOD 100, CAR 100, PWM 100, FDBK 90, INDX 127, DEC 20, FOLD 100, MIX 64 | 8688 | 4700 |
+
+"Before" is the renderer as of #1263. The sample loop now computes the knob
+constants (PWM lean and skew, pulse duty, morph weights, FOLD target) once
+per call, runs the DPW saw, skew and lean inline with no per-sample divide,
+and skips work the output does not hear. Its output is within 9 LSB (Q14) of
+the old renderer. PWM is the largest extra cost after MOD morph: PWM at
+centre takes about a fifth off the third row.
 
 `verify_cxosc` also compares INDX 0 and 96 at CAR sine, saw, and square. The
 rendered samples differ for all three shapes. This is emulator evidence, not
@@ -113,8 +127,24 @@ a hardware measurement. On `CXSEQ CV.RMX` (BUILD 79, 20 Nov 2026), Ilia
 confirmed on a unit that INDX changes the saw and triangle carrier waveforms.
 That report covers those two shapes only.
 
-Selection guard **`ML_FM_MAX = 6`** (Part popup `CX OSC: 6 MAX`). Measured on
-author MKII with remix `cx-cf` + CF METER (USB decode, 9 Nov 2026, tip
+Selection guard **`ML_FM_MAX = 6`** (Part popup `CX OSC: 6 MAX`). The cap of six
+was measured with **MOD morph at 0** on every CX OSC track (the tables below;
+the longest ISR there already reaches past the frame). With the morphs, PWM,
+FDBK, INDX, DEC and FOLD all engaged, use **four**. The guard counts tracks
+and cannot see the knobs.
+
+On CX B1 (this renderer) with MOD, CAR, PWM, FDBK, INDX, DEC and FOLD engaged
+(LOAD METER over USB, 26 Nov 2026, Ilia's MKII):
+
+| CX tracks sounding | CF share mean | CF share max | longest ISR |
+|---|---:|---:|---:|
+| 4 | 72.6% | 73.8% | 356.0 µs |
+| 5 | 79.7% | 80.1% | 387.2 µs, past the 362.8 µs frame |
+
+The previous renderer (CX A2) read 89.6% and 91.2% mean with four tracks on
+the same setup, longest ISR 498.8 and 422.2 µs: over the frame.
+
+Earlier MKII measurements used `cx-cf` + CF METER (USB decode, 9 Nov 2026,
 `CX-CF 69`):
 
 | CX tracks sounding | idle % | ISR mean | ISR max | notes |
@@ -124,7 +154,10 @@ author MKII with remix `cx-cf` + CF METER (USB decode, 9 Nov 2026, tip
 | 6 | ~12 | 309 µs | 376 µs | max past the 363 µs frame |
 | 7 | 0 | 355 µs | 446 µs | wall — MAIN clipped; do not ship as a cap |
 
-Eight tracks were not safe. Author confirmed **6 MAX** toast on unit (CX 70). [#852](https://github.com/sambanks/octabam/issues/852).
+On CX A2 with six tracks and MOD morph at 0 (LOAD METER over USB, 25 Nov
+2026), CF share averaged **71.4%** and reached **73.6%**; the longest ISR was
+**376.5 µs** against the 362.8 µs frame. This is the current six-track,
+MOD-zero test. Eight tracks were not safe. [#852](https://github.com/sambanks/octabam/issues/852).
 
 ## Build
 

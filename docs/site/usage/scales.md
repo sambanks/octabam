@@ -7,20 +7,21 @@ scales and the same chooser.
 Select a MIDI track and open MIDI ARP SETUP with **FUNC + AMP**. Encoder
 **F** is KEY:
 
-- **Turn F** to choose the tonic: OFF, then C to B. The scale stays.
-- **Press and release F** to open the SCALES window. It lists the
-  families; move with UP / DOWN and enter one with **RIGHT** (or **YES**).
-  The family's scales follow; **LEFT** goes back to the families. **YES**
-  on a scale chooses it and closes the window; **NO** closes it and
-  changes nothing. The scale in use shows its short name on its family's
+- **Turn F** to choose the tonic: OFF, then C through B. The selected scale
+  stays unchanged.
+- **Press and release F** to open the SCALES window. It lists the scale
+  families; move with UP / DOWN and open a family with **RIGHT** (or **YES**).
+  Press **LEFT** to return to the families list. Pressing **YES** on a scale
+  selects it and closes the window; pressing **NO** closes the window without
+  changing the scale. The active scale shows its short name on its family's
   row and a ticked box on its own row.
 
-The KEY field then shows the tonic and the scale's short name, for
-example **C#** and **PHRD** for C# Phrygian Dominant. The sequencer's and
-the arpeggiator's notes move to the nearest note of the scale (the lower
-one when two are as near). With CHORDS FACTORY in the remix, a step that
-holds a chord (NOT2, NOT3 or NOT4 set) plays as written instead, on any
-KEY, so a chord keeps its voicing.
+The KEY field then shows the tonic and the scale's short name, for example
+**C#** and **PHRD** for C# Phrygian Dominant. Notes from the sequencer and the
+arpeggiator are quantized to the nearest note in the scale (rounding down on a
+tie). When CHORDS FACTORY is included in the remix, any step containing a
+chord (NOT2, NOT3, or NOT4 set) plays as written regardless of KEY so the
+chord keeps its voicing.
 
 | family | scales |
 | --- | --- |
@@ -39,32 +40,34 @@ The scale is saved with the Part, like the KEY. A project made with
 
 ## The CHROMATIC keyboard
 
-Hold the track key and choose **CHROMATIC** in the trig-mode list: the
-trig keys light the track's scale. The tonic is yellow, the scale's other
-notes red, and the notes outside it dark, the same colours stock uses for
-C major. On a MIDI track key 1 is always C, as on stock's keyboard.
+Hold the track key and choose **CHROMATIC** in the trig-mode list to light the
+trig keys according to the track's scale. The tonic is lit yellow, other notes
+in the scale are red, and notes outside the scale stay unlit, matching the
+stock colours for C major. On a MIDI track, key 1 is always C, just as on the
+stock keyboard.
 
-On an audio track, with [Scale Quantizer](quantizer.md) in the remix, the
-keys light its **SCALE** on its **ROOT** (PROJECT > CONTROL > SEQUENCER).
-Scale Quantizer's keyboard plays ROOT on key 1, so keys 1 and 13 stay
-yellow.
+On an audio track, when [Scale Quantizer](quantizer.md) is included in the
+remix, the keys light its **SCALE** on its **ROOT** (under PROJECT > CONTROL >
+SEQUENCER). Because Scale Quantizer's keyboard maps ROOT to key 1, keys 1 and
+13 stay yellow.
 
-The keys follow a KEY, SCALE or ROOT you change while CHROMATIC is shown.
-KEY OFF and SCALE OFF keep stock's C major.
+The lit keys update immediately if you change KEY, SCALE, or ROOT while
+CHROMATIC mode is active. When KEY or SCALE is set to OFF, the keyboard falls
+back to the stock C major layout.
 
-Another module can light the trig keys as the same keyboard from any note
-(the `sc_keyboard` service) and mark its own notes green: CHORDS FACTORY
-does so while FUNC types a chord's notes.
+Other modules can also light the trig keys using this same keyboard layout
+starting from any note (via the `sc_keyboard` service) and mark their own
+notes in green; CHORDS FACTORY uses this when FUNC enters a chord's notes.
 
 ## On stock firmware
 
-A project saved with SCALES opens on stock 1.40C. A track with one of the
-seven diatonic modes keeps stock's Major or Minor for it (as with MIDI
-Scales); a track with another scale plays the KEY's tonic in Major or
-Minor. The scale comes back when the project is opened with SCALES again,
-as long as the bank was not saved on stock with another choice.
+Projects saved with SCALES can still be opened on stock 1.40C. A track using
+one of the seven diatonic modes maps to stock's Major or Minor scale (as with
+MIDI Scales), while any other scale falls back to Major or Minor on the KEY
+tonic. The original scale returns when you reopen the project with SCALES,
+provided the bank was not re-saved on stock firmware with a different choice.
 
-SCALES keeps the scale of each track and Part in `scales.work`, in the
-project folder, written when you save. A scale picked and not saved is
-lost at power-off: the track then plays its KEY's Major or Minor until you
-pick the scale again.
+SCALES stores each track and Part's scale in `scales.work` inside the project
+folder whenever you save. Any scale selection that has not been saved is lost
+on power-off, and the track reverts to Major or Minor on its KEY until you
+select the scale again.

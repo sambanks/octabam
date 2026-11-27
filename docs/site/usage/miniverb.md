@@ -1,13 +1,13 @@
-A stereo reverb for FX2, in place of DARK REV: a smooth, diffuse tail
-built from four feedback branches with two allpass diffusers each and
-four input diffusers. The input is folded to mono and the tank generates
-the stereo.
+MINIVERB is a stereo reverb for FX2 that replaces DARK REV. It produces a
+smooth, diffuse tail using four input diffusers feeding four feedback branches
+with two allpass diffusers each. The input is summed to mono and the reverb
+tank generates the stereo field.
 
 ## Access
 
-An effect on a track: select the track, press FX2, and pick MINIVERB from
-the chooser, where DARK REV was. Not in an official remix; build the test
-remix `miniverb`.
+MINIVERB is loaded as a track effect: select a track, press FX2, and choose
+MINIVERB where DARK REV used to be. It is not included in the standard
+remixes; build the `miniverb` remix or include it in a custom remix.
 
 ![FX2 SETUP with Mini Verb selected.](../../img/miniverb/chooser.png)
 
@@ -15,16 +15,16 @@ remix `miniverb`.
 
 ## Operation
 
-- The default settings give about 4.6 seconds of decay (RT60, measured on
+- The default settings produce about 4.6 seconds of decay (RT60, measured on
   the harness from an impulse).
-- DAMP darkens the tail as it rises.
-- MOD and RATE move two of the in-loop diffusers; RATE runs 0.34 to 2.69 Hz
-  in eight steps.
-- MIX 0 is an exact dry passthrough. The room is fixed: there is no
-  predelay, freeze or colour mode.
-- After the effect starts the audio passes dry for about 45 ms while the
-  delay memory clears.
-- Four instances fit per DSP core, eight in all.
+- Raising DAMP darkens the reverb tail.
+- MOD and RATE modulate two of the in-loop diffusers; RATE runs from 0.34 to
+  2.69 Hz in eight steps.
+- MIX 0 is an exact dry passthrough. The room character is fixed, with no
+  predelay, freeze, or colour mode.
+- When the effect starts, audio passes dry for about 45 ms while the delay
+  memory clears.
+- Up to four instances fit on each DSP core (eight in total).
 
 ## Parameters
 

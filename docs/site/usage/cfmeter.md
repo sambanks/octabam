@@ -1,42 +1,30 @@
-A probe. It measures, on the unit, how long the ColdFire's frame interrupt
-takes and how much time main's idle loop gets (with CF Meter Idle), and,
-on core 0, how long the DSP waits for each frame, whether the ESAI
-underran or overran, and the frame period. It prints the numbers as audio
-on track 8. It is the instrument for pricing ColdFire voice engines such as
-SYNTH MACHINE, and for reading the DSP's load during normal play.
+CF Meter is a performance profiling tool that runs on hardware to measure ColdFire frame interrupt duration, `main` idle loop time (when paired with CF Meter Idle), and core 0 DSP metrics including frame wait time, ESAI underrun/overrun status, and frame period. It encodes these measurements as audio on track 8, providing a way to profile ColdFire voice engines such as SYNTH MACHINE and monitor DSP load during playback.
 
 ## Access
 
-An effect on track 8 only: select T8, press FX2, and pick **CF Meter**.
-T8's audio is replaced by the readout (its machine still runs). Not in an
-official remix; build the test remix `cfmeter`. That image takes DARK REV
-off the chooser, because the readout uses its DSP words.
+CF Meter runs on track 8 only: select T8, press FX2, and choose **CF Meter** from the effect list. Track 8's audio output is replaced by the encoded readout, though its track machine continues running. This module is not included in the standard remixes; build the `cfmeter` remix to use it. That remix removes DARK REV from the chooser because the readout uses its DSP memory.
 
 ## Operation
 
-1. Build and flash the test remix, then power-cycle. Make a new project
-   and load a silent 4 s `SYNTH.wav` into FLEX slot 1.
-2. Put CF Meter on T8's FX2, with BURN and DBRN at 0.
-3. Connect USB. The readout is on USB audio, T8 on channels 15 and 16
-   (post-FX, pre-fader, so LEVL and MAIN do not matter).
-4. Record about 12 s per state, then decode the capture with `cfmeter.py`.
-   A cycle is 2 s and the decoder needs two of its sync edges, so a take
-   is 6 s at least.
-- Read the ISR mean and max, not idle percentage: task-level work below
-  the UI's priority reads as busy while the panel stays responsive.
-- BURN, MEM, SRC, SPAN and DBRN are read on track 8 only.
-- A late frame shows as slot 9 jumping by a whole frame's polls.
+1. Build and flash the `cfmeter` remix, then power-cycle the unit. Create a new project and load a silent 4-second `SYNTH.wav` file into FLEX slot 1.
+2. Load CF Meter into T8's FX2 slot with BURN and DBRN set to 0.
+3. Connect USB audio. Track 8 outputs the readout on USB channels 15 and 16 (post-FX, pre-fader, so LEVL and MAIN settings do not affect it).
+4. Record about 12 seconds per test condition and decode the recording with `cfmeter.py`. Each readout cycle takes 2 seconds and the decoder requires two sync edges, so recordings must be at least 6 seconds long.
+
+Notes:
+
+- Use the frame interrupt mean and max times rather than idle percentage, because task-level work below the UI's priority registers as busy even while the front panel stays responsive.
+- BURN, MEM, SRC, SPAN, and DBRN are only read on track 8.
+- A late audio frame appears as slot 9 jumping by a full frame's worth of polls.
 
 ## Parameters
 
 | Page | Knob | Range | What it does |
 |---|---|---|---|
-| 1 | BURN | 0-127, default 0 | 2 us of busy-wait per step at the start of every frame interrupt |
-| 1 | MEM | 0-127, default 0 | MEM KB read after the burn, timed into slot 7 |
-| 1 | DBRN | 0-127, default 0 | 24 x DBRN DSP cycles per sample, burnt by the insert before its sample loop |
-| 1 | SPAN | 0-127, default 0 | what slot 7 prints: BURN or the walk; the HC poll loops' time; the eDMA handler's time inside the frame interrupt; all of that handler's time |
-| 1 | SRC | 0-127, default 0 | the region MEM walks: 0 cached SDRAM, 1 uncached alias, 2 on-chip SRAM |
+| 1 | BURN | 0-127, default 0 | Adds 2 us of busy-wait per step at the start of every frame interrupt |
+| 1 | MEM | 0-127, default 0 | Reads MEM KB of memory after the burn, timed into slot 7 |
+| 1 | DBRN | 0-127, default 0 | Burns 24 x DBRN DSP cycles per sample before the insert's sample loop |
+| 1 | SPAN | 0-127, default 0 | Selects what slot 7 reports: BURN/memory walk time, HC poll loop time, eDMA handler time within the frame interrupt, or total eDMA handler time |
+| 1 | SRC | 0-127, default 0 | Selects the memory region walked by MEM: 0 = cached SDRAM, 1 = uncached alias, 2 = on-chip SRAM |
 
-Under the port, BURN 20 added 40.0 us to the interrupt mean (2 us x 20).
-The port's durations are its own clock's, not the unit's; the unit's
-numbers are not measured.
+Under the port, setting BURN to 20 added 40.0 us to the interrupt mean (2 us x 20). Because the port uses its own clock rather than hardware timing, those values do not represent unit measurements, which have not been recorded.

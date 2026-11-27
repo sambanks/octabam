@@ -25,6 +25,7 @@ MODULE = Module(
     key="KITS",
     kind=Kind.CF_PATCH,
     category=Category.PARTS, author="sambanks", author_url="https://github.com/sambanks",
+    coauthors=(("Em", "https://github.com/emuyia"),),
     evidence=(Evidence(Level.UNIT, unit="MKII", who="sambanks", date="2026-10-06",
         note="(image A6, 6 Oct 2026): importing Octakit-format kit files, ems-octakit #5, STOP/PTN+TRIG/PLAY with "
              "the Rytm, a rejected bank file, power cycles; `verify_kits` under the port"),),

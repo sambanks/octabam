@@ -1,24 +1,12 @@
-The Octatrack sends a CC for every live knob byte that changes, whatever
-changed it, so a controller's encoders (a BCR2000's LED rings) follow
-the unit. Stock sends a page-1 knob's CC on a panel turn only; after a
-pattern or Part change, a project load, MODE DEFAULTS, an incoming CC or
-a page-2 knob turn, the controller shows stale values.
+This module transmits a MIDI CC whenever any live knob value changes, regardless of what triggered the change, so external MIDI controllers (such as a BCR2000's LED rings) stay in sync with the Octatrack. Stock OS only sends page-1 CCs when you turn a front-panel encoder, leaving external controllers out of sync after a pattern or Part change, project load, MODE DEFAULTS reset, incoming CC, or page-2 adjustment.
 
 ## Operation
 
-Connect the controller: OT MIDI OUT to its MIDI IN, and its output back
-to the OT's MIDI IN for the rings to follow. With AUDIO CC OUT on, change
-a bank or pattern: the new values arrive paced at one message per UI
-tick, so a bank change reaches the controller over about three seconds
-instead of one burst.
+Connect the Octatrack's MIDI OUT to your controller's MIDI IN, and connect the controller's MIDI OUT back to the Octatrack's MIDI IN. With AUDIO CC OUT enabled, switching banks or patterns transmits the updated values paced at one message per UI tick, so a full bank change updates the controller over roughly three seconds instead of a single burst.
 
 ## Other synths on the MIDI out
 
-CC FEEDBACK sends on every audio track's channel, and a project load sends
-the loaded Part's knob values. A synth listening on one of those channels
-takes those CCs as its own parameters. Give the synth a channel no audio
-track uses, or set AUDIO CC OUT to INT when no controller needs the
-feedback.
+CC FEEDBACK sends messages on every audio track's MIDI channel, and loading a project transmits the loaded Part's knob values. Any synthesizer listening on one of those channels will interpret those CCs as parameter changes. Assign external synths to MIDI channels not used by audio tracks, or set AUDIO CC OUT to INT when no controller needs feedback.
 
 ## The CC numbers
 
@@ -32,8 +20,6 @@ feedback.
 | FX1 page 2 | 108–111, 14, 15 |
 | FX2 page 2 | 102–107 |
 
-Page 2 uses CC MAP's numbers.
+Page 2 parameters use the CC numbers defined by CC MAP.
 
-Not sent: LEVEL (CC 46), AMP VOL outside the AMP page, MUTE and SOLO
-(49/50), the crossfader (48), and PLAYBACK and AMP page 2 (no CC numbers
-exist for them).
+The following parameters are not transmitted: LEVEL (CC 46), AMP VOL outside the AMP page, MUTE and SOLO (CC 49 and 50), the crossfader (CC 48), and PLAYBACK and AMP page 2 (which have no assigned CC numbers).

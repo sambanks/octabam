@@ -2,12 +2,24 @@
 
 *BRAIN: Remixes*
 
-REMIXES switches the unit to another image on the card without flashing it. The web builder makes an `.RMX` file for each image it builds; see [Build and Install](../../web-builder.md). Stock 1.40C is also a valid target.
+REMIXES lets you boot another firmware image directly from the CF card without
+flashing it. The web builder generates an `.RMX` file for each remix it builds
+(see [Build and Install](../../web-builder.md)), and stock OS 1.40C is also
+supported.
 
-Copy `.RMX` files to the folder `BRAIN/REMIXES/` on the CF card. Delete any Mac `._<name>` files first, or they are listed too.
+Copy `.RMX` files into the `BRAIN/REMIXES/` folder on your CF card. On macOS,
+delete any hidden `._<name>` metadata files so they do not appear in the menu.
 
-Every `.RMX` file there is listed in name order; the one whose name matches the running image (case and spaces ignored) has RUNNING at the right. YES on one asks `BOOT <NAME>?`, and YES again boots it without writing the flash. A switch stops playback, saves the project (as OS UPGRADE does), loads the image and resets.
+All `.RMX` files in that folder are listed alphabetically, with `RUNNING` shown
+next to the image currently running (ignoring case and spaces). Press **YES** on
+an entry to prompt `BOOT <NAME>?`, then press **YES** again to boot it without
+writing to flash. Switching images stops playback, saves the current project
+(just like OS UPGRADE), loads the chosen image, and restarts.
 
-The choice is remembered and restored at the next reboot, before the project loads. After a switch, a FLASHED separator shows the installed image; select its name to return to it and clear the remembered choice.
+Your selection is remembered and automatically booted on subsequent startups
+before the project loads. After switching, a `FLASHED` separator lists the
+firmware installed in flash memory; select it to return to your flashed image
+and clear the remembered boot target.
 
-To skip the remembered choice for one boot, hold FUNC at power-on and choose EXIT in the stock STARTUP MENU, or take the card out.
+To bypass the remembered image for a single boot, hold **FUNC** while powering
+on and choose **EXIT** in the stock STARTUP MENU, or remove the CF card.

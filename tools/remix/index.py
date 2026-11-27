@@ -129,8 +129,7 @@ def _author(m) -> str:
     """One spelling per person, as the manual's credits print it (gen_pages.who)."""
     sys.path.insert(0, str(ROOT / "tools" / "site"))
     import gen_pages
-    name, profile, _ = gen_pages.who(m)
-    return f"[{name}]({profile})" if profile else name
+    return ", ".join(f"[{n}]({u})" if u else n for n, u in gen_pages.people(m))
 
 
 def module_index(mods) -> str:

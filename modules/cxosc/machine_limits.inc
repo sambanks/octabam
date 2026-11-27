@@ -1,7 +1,7 @@
 | CX OSC -- selection guard limits (from synth 2.15). Values only.
-| MKII CX-CF 69 (author, 9 Nov 2026), CF METER over USB: baseline idle 44.7 % /
-| ISR 125 us; 4x CX idle 21.8 % / 272 us; 6x idle ~12 % / 309 us (max past the
-| 363 us frame); 7x idle 0 % / ISR mean 355 us max 446 us — wall. Cap at 6.
-        .set    ML_FM_MAX, 4             | measured headroom on MKII (see comment)
+| The cap of six was measured with SETUP MOD morph at 0. MOD/CAR morph,
+| PWM, FDBK, INDX, DEC and FOLD all engaged: four tracks fit, five overrun
+| (CX B1, 26 Nov 2026). The guard counts tracks, not knobs.
+        .set    ML_FM_MAX, 6             | hardware-qualified cap when MOD morph is 0
         .set    ML_SY_MAX, 2             | unused (HAVE_SYDRUM 0)
         .set    ML_SY_WITH_FM, 1         | unused

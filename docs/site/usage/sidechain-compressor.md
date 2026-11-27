@@ -1,22 +1,26 @@
-The stock COMPRESSOR with a side-chain and a base-width key filter: any of
-tracks 1-8 can drive its detector, so one track's level
-ducks another. Page 2 adds a switch to listen to the key, the key itself, its
-gain, and a high-pass and low-pass pair that sets the band the detector hears.
+This module extends the stock COMPRESSOR with an external side-chain input and
+a base-width key filter. Any of tracks 1–8 can drive the detector so that one
+track ducks another. Page 2 adds a monitor switch to audition the filtered
+key, a key source selector, a key gain control, and a high-pass and low-pass
+filter pair that defines the frequency band the detector hears.
 
-The base-width filter isolates the key: a kick's fundamental, for example,
-with the high-pass cutting the sub-sonic rumble below it. That reduces distortion and keeps the
-compression smooth at short attack and release settings.
+The base-width filter isolates the part of the key signal you want the
+compressor to react to, such as a kick drum's fundamental with sub-sonic
+rumble filtered out. This reduces distortion and keeps compression smooth even
+at fast attack and release settings.
 
 ## Access
 
-An effect on a track: select the track, press FX2 (or FX1), and pick COMPRESSOR
-from the chooser; the setup page shows the new knobs. There is no separate
-effect to load: COMPRESSOR is the side-chain compressor.
+Select a track, press FX2 (or FX1), and pick **COMPRESSOR** from the chooser.
+There is no separate effect to load; COMPRESSOR itself becomes the side-chain
+compressor, and the new controls appear on its SETUP page (page 2).
 
-The side-chain is loaded into the audio processor while a track uses COMPRESSOR. Until it
-arrives, just after you choose COMPRESSOR, COMPRESSOR works as stock, KEY reads `--` and the screen
-says `SC KEY OFF`. In Octabam the same happens while DARK REV on track 4's FX2, or another loaded
-effect, holds the memory the side-chain uses. It is not in Octabam Bus.
+The side-chain engine loads into the audio processor whenever a track uses
+COMPRESSOR. Immediately after selecting COMPRESSOR, before the side-chain
+finishes loading, COMPRESSOR operates as stock, **KEY** displays `--`, and the
+screen shows `SC KEY OFF`. In Octabam, the same happens whenever DARK REV on
+track 4's FX2 (or another loaded effect) occupies the memory block used by the
+side-chain. This module is not included in Octabam Bus.
 
 ![FX2 SETUP with COMPRESSOR selected, showing RMS, MON, KEY (here T2), KGN, KBAS and KWID.](../../img/sidechain-compressor/chooser.png)
 
@@ -24,36 +28,38 @@ effect, holds the memory the side-chain uses. It is not in Octabam Bus.
 
 ## Operation
 
-- KEY chooses what drives the detector: OFF (the track's own signal, as
-  stock) or T1-T8. In the loader form, KEY reads `--` while the side-chain
-  is not loaded (just after you pick COMPRESSOR, or while a reverb holds
-  its block: the `SC KEY OFF` message). COMPRESSOR then works as stock;
-  your KEY setting is kept and comes back when the side-chain does. It is drawn as a nine-position switch, OFF pointing
-  left and T8 right, and moves one position per detent, also with the
-  encoder pressed. Choosing the compressor's own track keys it from its own
-  signal through the filter.
-- KBAS is the filter's base: a high-pass at OFF or 20 Hz to 19.6 kHz. Its
-  readout is in Hz (`1.2k` is 1.2 kHz).
-- KWID is the filter's width (the bracket between KBAS and KWID shows the
-  pair): a low-pass this many octaves above KBAS, 0.5 to
-  9.9, or OFF. Its readout is in octaves. With KBAS at OFF it counts up from
-  20 Hz, so it works as a plain low-pass.
-- The two cannot cross: raising KBAS moves the whole band up.
-- For a kick: KBAS about 30-40 Hz, KWID about 1.2-1.5.
-- KGN is the key's gain, about -24 to +24 dB.
-- MON lets you hear the processed key in place of the track: OFF on the
-  left, ON on the right. Switching it, or changing KEY while it is on,
-  fades (about 6 ms) instead of clicking.
-- A key from an earlier track in the same group of four (T1 keying T2-T4,
-  T5 keying T6-T8) reaches the detector with no delay, so a trig on both
-  tracks at once clicks less at short attack than a key from the other
-  group.
-- A COMPRESSOR saved on stock firmware comes up with MON OFF, KEY OFF, KGN
-  centred and both filters OFF; one saved with an earlier version of this
-  module comes up with MON OFF.
-- Any track can key any other, in either group of four.
-- With [mute modes](mute-modes.md), a muted key track keeps feeding the
-  key, as a stock mute does.
+- **KEY** selects what drives the detector: `OFF` (the track's own signal, as
+  on stock firmware) or `T1`–`T8`. While the side-chain is not loaded (right
+  after choosing COMPRESSOR, or while a reverb holds its memory block and
+  `SC KEY OFF` is shown), KEY reads `--` and COMPRESSOR works as stock. Your
+  KEY setting is preserved and resumes as soon as the side-chain becomes
+  available. KEY is drawn as a nine-position switch (`OFF` on the left through
+  `T8` on the right) and steps one position per detent even with the encoder
+  pressed. Selecting the compressor's own track keys it from its own signal
+  routed through the key filter.
+- **KBAS** sets the key filter's base frequency (an 18 dB/oct high-pass filter
+  from `OFF`, or 20 Hz to 19.6 kHz, displayed in Hz such as `1.2k` for
+  1.2 kHz).
+- **KWID** sets the filter's width (bracketed with KBAS on screen): a 12 dB/oct
+  low-pass filter placed 0.5 to 9.9 octaves above KBAS, or `OFF`. When KBAS is
+  `OFF`, KWID counts upward from 20 Hz and acts as a standalone low-pass
+  filter.
+- KBAS and KWID cannot cross; raising KBAS shifts the entire passband upward.
+- As a starting point for ducking from a kick drum, try KBAS around 30–40 Hz
+  and KWID around 1.2–1.5.
+- **KGN** adjusts key gain from roughly -24 to +24 dB.
+- **MON** lets you audition the filtered key signal in place of the track's
+  audio (`OFF` on the left, `ON` on the right). Toggling MON or changing KEY
+  while MON is active crossfades over about 6 ms to avoid clicks.
+- Any track can key any other track across both groups of four. Keying from an
+  earlier track in the same group (T1 keying T2–T4, or T5 keying T6–T8)
+  reaches the detector with zero latency, so simultaneous trigs on both tracks
+  click less at fast attack settings than when keying across groups.
+- A COMPRESSOR saved on stock firmware loads with MON `OFF`, KEY `OFF`, KGN
+  centred, and both key filters `OFF`. One saved with an earlier version of
+  this module loads with MON `OFF`.
+- With [mute modes](mute-modes.md), a muted key track continues feeding the
+  side-chain detector, matching stock mute behavior.
 
 ## Parameters
 

@@ -1,1 +1,1 @@
-PLATE REV's id, kept with no chooser row. A Part saved with PLATE REV opens on VERBERATION in PLATE mode instead.
+This stub retains PLATE REV's effect ID without a chooser row, so any Part saved with PLATE REV opens on VERBERATION in PLATE mode instead.

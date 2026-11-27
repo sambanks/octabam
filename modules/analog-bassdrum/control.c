@@ -136,7 +136,7 @@ void ab_engine_select(unsigned model) {
     U32(0x100f8598u)=1;
     ((void (*)(void))0x40027e00u)();
     mc_publish();
-    ((void (*)(void))0x4004d948u)();
+    ((void (*)(int))0x4004d948u)(-1);   /* -1 = the current track, as stock calls it */
 }
 static void engine_808(void) { ab_engine_select(0); }
 static void engine_909(void) { ab_engine_select(1); }

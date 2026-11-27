@@ -1,6 +1,6 @@
-Lets a computer on the USB cable follow what the unit is doing: project
-loads and saves, start and stop, bank and pattern changes arrive as
-timestamped records, for hardware tests that wait for an event. The
-computer can also read memory, enter and leave USB DISK MODE, and start a
-remix from REMIX SWITCH's list. There is nothing to operate and nothing on
-the panel.
+This module lets a computer connected over USB monitor what the Octatrack is
+doing. Project loads and saves, transport starts and stops, and bank or
+pattern changes are reported as timestamped records for automated hardware
+tests that wait on specific events. The computer can also read memory, enter
+and exit USB DISK MODE, and launch a remix from the REMIX SWITCH list. It has
+no user controls and does not appear on the panel.

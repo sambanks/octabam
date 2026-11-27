@@ -1,5 +1,5 @@
-An internal service other features rely on. It tells them when the
-transport starts and stops, when MIDI arrives, which steps you are holding
-and when something is copied, so that PAGE 2 LOCKS and similar features can
-follow held-step edits and copy and undo. It has no controls and nothing on
-the panel.
+EVENTS is an internal service that other features rely on. It notifies them
+when the transport starts or stops, when MIDI arrives, which steps you are
+holding, and when data is copied, allowing features such as PAGE 2 LOCKS to
+track held-step edits, copies, and undo. It has no controls or panel
+indicators.

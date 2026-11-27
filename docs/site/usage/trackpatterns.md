@@ -1,6 +1,7 @@
-Each track can play its own pattern of the playing bank, clip style. A
-change lands at the end of that track's own loop, so it stays in time;
-the other tracks, the global pattern and the Part carry on.
+TRACKPATTERNS lets each track play its own pattern from the active bank,
+similar to launching clips. Pattern changes take effect at the end of that
+track's loop so playback stays in time, while the other tracks, the global
+pattern, and the active Part continue uninterrupted.
 
 ## Operation
 
@@ -10,29 +11,28 @@ the other tracks, the global pattern and the Part carry on.
 | Track n back to the global pattern | The same, with the global pattern's trig |
 | Every track back | Any global pattern change (PATTERN + TRIG without a TRACK key, a chain, a bank change) |
 
-Press [TRACK n] first, then [PATTERN]. A popup names the change
-(`T1 > A03`, `T1 FOLLOWS`). In MIDI mode the TRACK keys address M1–M8.
-While playing, the change lands when the track wraps to its first step;
-while stopped, it applies at once and PLAY starts it from step 1.
+Press [TRACK n] first, then [PATTERN]. A popup confirms the change (`T1 > A03`
+or `T1 FOLLOWS`). In MIDI mode, the TRACK keys address M1–M8. While playing,
+the change takes effect when the track wraps to step 1; while stopped, it
+applies immediately and PLAY starts the pattern from step 1.
 
 ## What you see
 
-- With [TRACK n] and [PATTERN] held, the pattern trig keys light the
-  pattern T_n plays as the current one, and a change it has queued as a
-  queued one.
-- When the current track plays its own pattern, outside GRID REC its
-  trig keys blink that pattern's trigs slowly over the running light,
-  from the 16 steps its playhead is in. In
-  GRID REC the trigs shown are still the global pattern's (the ones the
-  keys edit), and they blink slowly as a warning that this track does not
-  play them.
+- While [TRACK n] and [PATTERN] are held, the pattern trig keys highlight the
+  pattern that track T_n is currently playing, as well as any queued pattern
+  change for that track.
+- When the current track is playing its own pattern outside GRID REC, its trig
+  keys slowly blink that pattern's trigs from the active 16-step page behind
+  the running playhead LED. In GRID REC, the trig keys still display the global
+  pattern's trigs (the ones the keys edit), blinking slowly as a warning that
+  this track is currently playing a different pattern.
 
 ## Limits
 
-- The track loops at its own pattern's length under SCALE MODE PER
-  TRACK, inside the global pattern's MASTER LENGTH; under NORMAL every
-  track wraps at the global pattern's length. Tempo, track speed and the
-  sound stay the playing pattern's and Part's.
-- Editing and recording address the global pattern.
-- Not saved: after a reload or a power cycle every track follows the
-  global pattern again.
+- Under SCALE MODE PER TRACK, each track loops at its own pattern length within
+  the global pattern's MASTER LENGTH. Under NORMAL scale mode, every track
+  wraps at the global pattern's length. Tempo, track speed, and sound settings
+  stay tied to the active global pattern and Part.
+- Editing and recording always apply to the global pattern.
+- Per-track pattern assignments are not saved; reloading the project or cycling
+  power returns every track to the global pattern.
