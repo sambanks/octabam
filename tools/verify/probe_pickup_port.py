@@ -24,8 +24,11 @@ before END. For each pass it gives the peak level and the largest
 sample-to-sample step within 64 samples of the restart against the largest
 elsewhere. With --sine PERIOD the input is a sine of that many samples and the
 measure is its residual x[n+1] + x[n-1] - 2 cos(w) x[n], zero for a clean
-sine: pick a PERIOD that divides the pass (245 for 2 bars at 128 BPM), and a
-jump at the restart is the firmware's. It exits 1 unless T1's voice plays the
+sine. A synced Pickup plays its take (END samples) resampled into the bars, so
+pick a PERIOD that divides END (16 for 2 bars at 128 BPM, END 165,392), not
+the pass: then a jump at the restart is the firmware's, not the take's seam.
+The input starts on the script's clock (`1000 audio start`); --sine-to-end
+silences it when the take ends. It exits 1 unless T1's voice plays the
 Pickup and MAIN carries it.
 
 Everything it writes is under out/pickup_port/<tag>/ (made from the user's own
@@ -59,8 +62,9 @@ def key(ms, code, hold=60):
     return [f"{ms} key {code:#x} down", f"{ms + hold} key {code:#x} up"]
 
 
-def fixture(fresh, dest, bpm, trig):
-    """T1 PICKUP on R1 with TRIG `trig` in every Part (and its saved copy) of every bank."""
+def fixture(fresh, dest, bpm, trig, setup=()):
+    """T1 PICKUP on R1 with TRIG `trig` and any further RECORDING SETUP (field, raw value) pairs,
+    in every Part (and its saved copy) of every bank."""
     shutil.rmtree(dest, ignore_errors=True)
     shutil.copytree(fresh, dest)
     otp.guard_backup = lambda: None                 # a project the port made, not a unit's backup
@@ -69,19 +73,26 @@ def fixture(fresh, dest, bpm, trig):
             for p in range(1, 5):
                 otp.set_machine_type(dest, b, p, 1, 4)
                 otp.set_recorder_setup(dest, b, p, 0, "TRIG", TRIG[trig], guard=False)
+                for field, v in setup:
+                    otp.set_recorder_setup(dest, b, p, 0, field, v, guard=False)
                 for pp in (p, p + 4):
                     otp.set_track_slot(dest, b, pp, 1, 129, "pickup")
         otp.set_tempo(dest, bpm)
 
 
-def sine_wav(path, period, level, secs):
-    """A stereo 24-bit sine of `period` samples (a whole number of them in a loop that is a multiple of it)."""
+def sine_wav(path, period, level, secs, until=None):
+    """A stereo 24-bit sine of `period` samples (a whole number of them in a loop that is a multiple of it),
+    silent from sample `until` on."""
     amp = round(level * 0x7FFFFF)
     frame = b"".join(struct.pack("<i", round(amp * math.sin(2 * math.pi * n / period)))[:3] * 2
                      for n in range(period))
     with wave.open(str(path), "wb") as w:
         w.setnchannels(2); w.setsampwidth(3); w.setframerate(FS)
-        w.writeframes(frame * (secs * FS // period + 1))
+        n = secs * FS // period + 1
+        if until is None:
+            w.writeframes(frame * n)
+        else:
+            w.writeframes((frame * (until // period + 1))[:6 * until] + bytes(6 * (n * period - until)))
 
 
 def main_out(prefix):
@@ -109,8 +120,13 @@ def main():
     ap.add_argument("--end", choices=("rec1", "rec2"), default="rec1",
                     help="end the take with REC1 (ONE2: plays and overdubs), or with REC2 "
                          "(plays, no overdub)")
+    ap.add_argument("--qrec", type=int, default=None, help="T1's QREC, raw: -1 OFF (stock's default), 0 PLEN, "
+                    "1-16 the step ladder 1 2 3 4 6 8 12 16 24 32 48 64 96 128 192 256")
+    ap.add_argument("--qpl", type=int, default=None, help="T1's QPL, raw, as --qrec")
     ap.add_argument("--sine", type=int, default=0, metavar="PERIOD",
                     help="feed a sine of PERIOD samples (256 divides 2 bars at 128 BPM) and report its residual")
+    ap.add_argument("--sine-to-end", action="store_true",
+                    help="the sine stops when the take ends: an overdub then records silence")
     ap.add_argument("--level", type=float, default=0.06, help="the --sine level, of full scale")
     ap.add_argument("--rec2-at", type=float, action="append", default=[],
                     help="a REC2 press (play / stop; while overdubbing, stops the overdub), in passes after the take ends")
@@ -133,7 +149,8 @@ def main():
                                cwd=ROOT, capture_output=True, text=True)
             if r.returncode:
                 sys.exit(f"probe_pickup_port: ot_fresh failed:\n{(r.stdout + r.stderr)[-1200:]}")
-        fixture(fresh / "image/PROJECT 000000", out / "proj", a.bpm, a.trig)
+        setup = [(f, v) for f, v in (("QREC", a.qrec), ("QPL", a.qpl)) if v is not None]
+        fixture(fresh / "image/PROJECT 000000", out / "proj", a.bpm, a.trig, setup)
         r = subprocess.run([str(PY), str(ROOT / "tools/emu/ot_emu/stage_card.py"), str(out / "proj"), "OCTABAM", "PUM",
                             "--tree", str(out / "tree"), "--out", str(card)], cwd=ROOT, capture_output=True, text=True)
         if r.returncode:
@@ -141,7 +158,7 @@ def main():
 
     bar_ms = 4 * 60000 / float(a.bpm)
     t_rec, t_end = 2000, 2000 + round(a.bars * bar_ms)
-    lines = ["300 pot 200"] + key(500, NO) + key(1000, PLAY) + key(t_rec, REC1) + key(t_end, REC1 if a.end == "rec1" else REC2)
+    lines = ["300 pot 200", "1000 audio start"] + key(500, NO) + key(1000, PLAY) + key(t_rec, REC1) + key(t_end, REC1 if a.end == "rec1" else REC2)
     for p in a.rec1_at:
         lines += key(t_end + round(p * a.bars * bar_ms), REC1)
     for p in a.rec2_at:
@@ -149,12 +166,14 @@ def main():
     quit_ms = t_end + round((a.passes + 0.5) * a.bars * bar_ms)
     if a.sine:
         a.input = str(out / "sine.wav")
-        sine_wav(out / "sine.wav", a.sine, a.level, quit_ms // 1000 + 2)
+        # the input starts on the script's clock, at its `1000 audio start` (TRAPS.md trap-two-clocks)
+        until = round((t_end - 1000) * FS / 1000) if a.sine_to_end else None
+        sine_wav(out / "sine.wav", a.sine, a.level, quit_ms // 1000 + 2, until)
     lines = sorted(lines, key=lambda l: int(l.split()[0])) + [f"{quit_ms} quit"]
     (out / "run.script").write_text("\n".join(lines) + "\n")
     watch = ";".join(x for x in (f"{MAILBOX:#x},4", f"{LIMIT:#x},4", f"{VOICE:#x},1", a.watch_mem) if x)
     cmd = [EMU, "--image", a.image, "--card", card, "--set", "OCTABAM", "--project", "PUM", "--load-ms", "90000",
-           "--mkii", "--dsp", "--internal-clock", "--audio-in", a.input, "--live-script", out / "run.script",
+           "--mkii", "--dsp", "--internal-clock", "--audio-in", a.input, "--audio-in-on-cue", "--live-script", out / "run.script",
            "--watch-mem", watch, "--audio-out", out / "run", "--mem-dump", f"{VOICE:#x},168={out / 'voice.bin'}"]
     if a.watch_pc:
         cmd += ["--watch-pc", a.watch_pc]
