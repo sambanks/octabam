@@ -299,6 +299,39 @@ same port:
 Not measured on a unit: host-to-unit MIDI after a replug (port only), many
 replugs, host sleep and wake, a hub.
 
+### Attach watchdog (27 Nov 2026)
+
+Stock attaches only from the OTG session-valid interrupt: BSVIS with BSV set
+calls `0x4001d630`, which sets `USBCMD.RS` (`0x4001e91c` region; nothing else
+calls it). After a REMIX SWITCH the new image's start-up arms the interrupt
+(BSVIE) and the flag has to be pending then.
+
+Measured on one MKII (27 Nov 2026) with REMOTE watching `USBCMD`, `PORTSC1` and
+`OTGSC[31:16]`: in 160 boots after a REMIX SWITCH the first poll read the flag
+byte `0x2d` (BSVIS set), BSVIE was then armed and `USBCMD` went to 1 at once.
+One boot read `0x20` (BSVIS clear), BSVIE armed, and `USBCMD` stayed 0: the unit
+ran with its project loaded and no USB device on the host; a re-plug did not
+bring it back, a power cycle did. The BSV status bit was not watched, so VBUS
+not valid during that boot (an unseated cable was found the same day) fits it
+too.
+
+`usb_attach_wd`, called at the entry of `audio_frame_shim`: when `OTGSC.BSV` and
+`OTGSC.BSVIE` are set and `USBCMD.RS` has stayed clear for `WD_FRAMES` (8,000,
+about 3 s of frames), it runs `0x4001d630` and posts `0x400b986a` to the UI
+queue `0x460d17ae`, as the interrupt does. A host that is attached is not
+touched. `wd_fired` counts the runs (PEEK).
+
+- A first version without the BSVIE condition ran in every boot (39 of 39
+  boots read `wd_fired` 1): stock sets RS more than 3 s after the frames start.
+- Test build (`USB_WD_TEST=1` in the environment of the build: RS cleared once
+  when the controller runs with BSVIE armed): `wd_fired` read 1 and the unit
+  was back on USB.
+- Real build: `wd_fired` 0 in 51 boots in a row (the 52nd boot stopped on the
+  boot screen, a different stop). `verify_usbmidi_isr`, `verify_usb_midi_replug`
+  and `verify_usb_align` pass.
+- Not measured: the watchdog catching a real lost edge (about one boot in 150
+  without it).
+
 ### Open
 
 - Not measured: clock jitter over USB against DIN (bulk transfers have no schedule; the
