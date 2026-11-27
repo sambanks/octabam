@@ -631,6 +631,14 @@ author's ROM layout byte for byte. A unit's `.bss` (uninitialised; KITS's
 1.6 MB library, PLOCKS P2's 1.5 MB table) lands in the same reserve and
 must end below its ceiling.
 
+A unit's engine can be written in C. The module checks in the generated
+`.s` as its `Linked` source, and its `generate.py` declares a
+`c_unit.Unit` (`tools/build/c_unit.py`): the C sources, the hand-written
+`.s` files, the stock calls the unit may make, and a sample `remix.inc`.
+`python3 generate.py` writes the unit, `--check` fails when it is stale,
+and both refuse a call outside the unit, a `.bss` and a unit that does
+not assemble for the 5475. `modules/chords` is the example.
+
 `Linked.include=fn` gives a unit data that depends on the REMIX: the build
 calls `fn(modules)` (the remix's modules by key), writes the text it
 returns beside the unit as `remix.inc`, and the source reaches it with
