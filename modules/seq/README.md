@@ -17,9 +17,23 @@ and empty F. Harmony has A=**SCAL**, B=**ROOT**, D=**PHRS**, E=**JUMP** on
 audio and MIDI. MIDI C=**VOIC** 1 to 4 and F=**CHRD**; audio C and F are empty.
 Fresh audio settings select **SRC** / **PTCH**; MIDI settings select
 **NOTE**. The page hint sits at the top-right of the SEQ logo panel.
-Audio pitch availability follows the resolved parameter name: FLEX PTCH
-opens Harmony, while THRU INAB stays on Rhythm without the RIGHT hint.
-`verify_seq_tonal_port.py` checks both machines through the panel.
+Audio pitch availability follows the resolved parameter name (PTCH or
+TUNE) and the track's pitch kind (`ef_pitch_kind`, from the machine byte
+and the FLEX signature):
+
+| track | slot-0 locks | span | range |
+|---|---|---|---|
+| STATIC, FLEX, PICKUP | 64 + 5·st | 12 st | 0..127 |
+| FM SYNTH, SY, CX OSC (`FM` / `SY` / `CX`,1) | 64 + st | 64 st | clamp 0..127 |
+| OCTA-303, WAVE CF (`TB` / `WV`,1) | 64 + st, 64 = C3 | 24 st | fold into 40..88 (C1..C5) |
+| BLKPYRAMD (`OT`,1) | 60 + st, 0 = C0 | 24 st | fold into 0..96 (C0..C8) |
+| THRU, NEIGHBOR, ANALOG BD (`AB`,1), DRUMMER (`DR`,1) | not a pitch | | generic Part ± DPTH |
+
+A signature counts only on a FLEX track, as each machine's own check
+reads it. The first two rows keep their earlier behaviour.
+`verify_seq_tonal_port.py` checks THRU and FLEX through the panel, fills
+OCTA-303, WAVE CF and BLKPYRAMD tracks with Part pitch at the top of their
+range, and checks that ANALOG BD stays on Rhythm with generic locks.
 **LANE** selects whether A/B and the grid edit the **TRIG** rhythm or the
 **PLOCK** rhythm for the current destination. **`[YES]`** writes the TRIG
 rhythm and selected destination's locks. On audio tracks, TRIG writes sample
@@ -114,8 +128,11 @@ use (TRIG: reshape to trig set; PLOCK: clear on hits/misses). Non-zero:
 
 - **DEST = PTCH:** DPTH sets pitch variation around the Part PLAYBACK PTCH.
   SEQ chooses pitches from SCAL and ROOT. FM, SY and CX can span up to 64
-  semitones either side, limited by the raw PTCH range. Silent / PLCK misses
-  fall back to Part.
+  semitones either side, limited by the raw PTCH range. OCTA-303 and WAVE CF
+  TUNE span up to 24 semitones, folded by octaves into C1..C5; BLKPYRAMD
+  PTCH the same, into C0..C8. Slot 0 on THRU, NEIGHBOR, ANALOG BD and
+  DRUMMER takes the generic rule below. Silent / PLCK misses fall back to
+  Part.
 - **DEST = AMP VOL:** unipolar below Part AMP VOL.
 - **Any other DEST:** uniform `[Part−DPTH .. Part+DPTH]` clamped 0..127.
 
@@ -164,6 +181,13 @@ Port (`--mkii`, remix `cx`): CLEAR DEST labels; one NO / list YES / FUNC+BANK
 again restores SEQ. FUNC+BANK is Detour/SymbolRef only (no EF_KEYS BANK) so
 the list does not toggle open/closed on a single chord.
 `verify_seq_func_bank.py` and `verify_seq_scenarios.py` cover the cases.
+`verify_seq.py` requires the layer tables to call `*_k` kthunk wrappers (not
+bare handlers) and checks `54_ef.lst` lists every wrapper. `verify_seq_scenarios.py`
+pokes the stock key-held cache at `0x46c7d8ee` after CUE release so a clobbered
+`d2` cannot mark the wrong key held or leave SEQ owning CUE after **`[NO]`**;
+it also runs **`[TRACK]`**+**`[PAGE]`** toggle open/close (including close while
+**`[TRACK]`** stays held), and **`[CUE]`**+**`[TRACK]`** then **`[NO]`**, then
+bare **`[CUE]`**.
 
 Manual site: [`docs/site/usage/seq.md`](../../docs/site/usage/seq.md).
 

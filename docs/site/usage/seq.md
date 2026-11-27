@@ -84,7 +84,8 @@ MIDI lock on its hit steps. It does not add note trigs.
 ## Controls
 
 SEQ has two control pages. **`[RIGHT]`** opens Harmony when **D** is set to
-audio **SRC** / **PTCH** or MIDI **NOTE**. **`[LEFT]`** returns to Rhythm.
+audio **SRC** / **PTCH**, **SRC** / **TUNE** on an OCTA-303 or WAVE track, or
+MIDI **NOTE**. **`[LEFT]`** returns to Rhythm.
 The step grid and **LEN** stay visible on both pages.
 
 ### Rhythm
@@ -97,7 +98,7 @@ The step grid and **LEN** stay visible on both pages.
 | **B** | **ROT** | Rotation of the focused lane |
 | **C** | **LANE** | **TRIG** or **PLCK** |
 | **D** | Page and parameter | Choose the lock destination. Audio choices include **AMP** / **VOL**, **SRC** / **PTCH**, CX OSC controls, and the page-two parameters for FX1 and FX2. MIDI choices include **NOTE**, **VEL**, **LEN**, LFO and ARP parameters, pitch bend, channel pressure, and **CC1** through **CC10**. |
-| **E** | **DPTH** | Set lock variation. At 0, the fill clears this destination's locks. **AMP** / **VOL** varies only below the Part value; audio **PTCH** and MIDI **NOTE** use DPTH for their pitch span. Other destinations vary above and below their Part values. |
+| **E** | **DPTH** | Set lock variation. At 0, the fill clears this destination's locks. **AMP** / **VOL** varies only below the Part value; audio **PTCH** or **TUNE** and MIDI **NOTE** use DPTH for their pitch span. Other destinations vary above and below their Part values. |
 | **F** | | Empty |
 
 **LEN** shows the active pattern length.
@@ -112,9 +113,13 @@ returns to the Euclidean pattern.
 
 ![SEQ Harmony page on an audio track, with RAND selected.](../../img/seq/tonal.png)
 
-On audio tracks, Harmony controls the **SRC** / **PTCH** destination.
+On audio tracks, Harmony controls the **SRC** / **PTCH** destination. On
+OCTA-303 and WAVE tracks it controls **SRC** / **TUNE**, the machine's note.
+On ANALOG BD, DRUMMER, THRU and NEIGHBOR tracks the first SRC knob is not a
+note, so Harmony stays closed and **DPTH** varies that knob around its Part
+value.
 **SCAL** and **ROOT** set the scale for generated pitch locks. **DPTH**
-sets their pitch span around the Part's **PLAYBACK PTCH**. **D** **PHRS**
+sets their pitch span around the Part's **PLAYBACK PTCH** or **TUNE**. **D** **PHRS**
 chooses RAND, UP, DOWN, ALT or TRI for the generated pitches. New tracks
 start at RAND. **E** **JUMP**
 sets phrase spacing from 0 to 127. For UP, DOWN, ALT and TRI, 0 advances
@@ -124,7 +129,11 @@ start at the Part pitch and move in the selected direction, wrapping within
 the **DPTH** pitch span. ALT and TRI traverse that span from its lowest
 pitch. Sample playback pitch locks use whole-semitone steps. At **DPTH**
 127, sample playback spans up to 12 semitones in either direction; FM, SY
-and CX pitch span up to 64 semitones, limited by the PTCH range.
+and CX pitch span up to 64 semitones, limited by the PTCH range. OCTA-303
+and WAVE **TUNE** spans up to 24 semitones and stays within C1 to C5.
+BLKPYRAMD **PTCH** spans up to 24 semitones and stays within C0 to C8. On
+these three, a note past either end moves by octaves back into range and
+keeps its scale degree.
 
 On audio tracks, **C** and **F** are blank.
 

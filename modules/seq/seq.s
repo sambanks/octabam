@@ -121,6 +121,9 @@
         .set    SPRINTF,   0x40013a08
         .set    LPUSH,     0x40031494
         .set    LPOP,      0x4003146c
+        .set    KEY_CACHE, 0x46c7d8de   | 64 key records of 24 bytes, layer at +12
+        .set    LAYER_ROOT, 0x460d165c  | top layer record; next links at +0 and +12
+        .set    LREBUILD, 0x4003125c    | refill the key cache from LAYER_ROOT (LPUSH/LPOP end here)
         .set    SCRDIRTY,  0x46c7c72c
         .set    TEMPO24,   0x80001814   | entropy seed (same as RND NAME)
         .set    CLOCKEST,  0x80001818
@@ -220,8 +223,15 @@
         | DEST=PTCH: rad = max_rad*DEPTH/127 (min 1 if DEPTH>0).
         | PIT_RAD 64 spans the full raw PTCH range around 64 for FM/SY/CX.
         | PIT_SAMP 12 = sample PLAYBACK max |st|.
+        | PIT_TUNE 24 = OCTA-303 / WAVE CF TUNE, raw TUNE_LO..TUNE_HI (C1..C5),
+        | and BLKPYRAMD PTCH, raw 0..BP_HI (C0..C8).
         .set    PIT_RAD,   64
         .set    PIT_SAMP,  12
+        .set    PIT_TUNE,  24
+        .set    TUNE_LO,   64-PIT_TUNE
+        .set    TUNE_HI,   64+PIT_TUNE
+        .set    BP_C5,     60
+        .set    BP_HI,     96
         .set    EF_MAGIC,  0x4546494c   | 'EFIL'
         .set    EF_VER,    12           | v12 appends page-2 depth and plock settings
         .set    EF_BANK_B, 224          | 8 tracks * 28
@@ -281,8 +291,9 @@ ef_page:
         cmpl    8(%sp),%d0
         bne.s   8f                      | press only
         tstl    ef_win
-        bne.w   ef_close                | TRACK+PAGE while open: close
-        bra.w   ef_open
+        beq.w   ef_open                 | release, closed: open
+        bsr.w   ef_close                | release, open: close
+        bra.w   8f
 8:      rts
 9:      lea     -16(%sp),%sp            | displaced prologue
         movem.l %d2-%d4/%a2,(%sp)
@@ -1076,8 +1087,85 @@ close_orphan:
         pea     EF_LAYER
         jsr     LPOP
         addql   #4,%sp
+        | Stale next links after TRACK hold / CUE chord: fix and LREBUILD.
+        lea     EF_LAYER,%a1
+        bsr.w   ef_unlink_stale
+        jsr     LREBUILD
 9:      rts
 
+| A layer stock pushed above ours (TRACK hold under TRACK+PAGE, clear list)
+| can keep a next link at ours after LPOP. Walk layer root and key-cache
+| layer pointers; repoint them like a real unlink. a1 = our layer record.
+| LPOP already refilled cache through stale links; LREBUILD follows.
+        .set    UE_MAX, 64
+ef_unlink_stale:
+        tstl    ef_unlink_busy          | WDESTROY can re-enter close_orphan
+        bne.w   9f
+        moveq   #1,%d0
+        movel   %d0,ef_unlink_busy
+        lea     -20(%sp),%sp
+        movem.l %d2-%d4/%a3-%a4,(%sp)
+        movea.l %a1,%a3
+        lea     ef_unlink_queue,%a4     | not on the key stack (64×4 B)
+        moveq   #0,%d3                  | queued
+        movel   LAYER_ROOT,%d0
+        bsr.s   ue_add
+        movea.l #KEY_CACHE+12,%a1
+        moveq   #64,%d2
+1:      movel   (%a1),%d0
+        bsr.s   ue_add
+        lea     24(%a1),%a1
+        subql   #1,%d2
+        bne.s   1b
+        moveq   #0,%d4                  | visited
+2:      cmpl    %d3,%d4
+        bge.s   9f
+        movel   (%a4,%d4.l*4),%d0
+        movea.l %d0,%a0
+        cmpa.l  (%a0),%a3
+        bne.s   3f
+        movel   (%a3),(%a0)
+3:      cmpa.l  12(%a0),%a3
+        bne.s   4f
+        movel   12(%a3),12(%a0)
+4:      movel   (%a0),%d0
+        movel   12(%a0),%d2
+        bsr.s   ue_add
+        movel   %d2,%d0
+        bsr.s   ue_add
+        addql   #1,%d4
+        bra.s   2b
+9:      movem.l (%sp),%d2-%d4/%a3-%a4
+        lea     20(%sp),%sp
+        clrl    ef_unlink_busy
+        rts
+
+| d0: a layer record to queue unless null, ours, odd, outside RAM, queued,
+| or the queue is full. Uses d1 and a0; keeps a1.
+ue_add:
+        tstl    %d0
+        beq.s   9f
+        cmpa.l  %d0,%a3
+        beq.s   9f
+        btst    #0,%d0
+        bne.s   9f
+        cmpil   #0x40000400,%d0
+        bcs.s   9f
+        cmpil   #0x47f00000-28,%d0
+        bhi.s   9f
+        moveq   #0,%d1
+1:      cmpl    %d3,%d1
+        bge.s   2f
+        cmpl    (%a4,%d1.l*4),%d0
+        beq.s   9f
+        addql   #1,%d1
+        bra.s   1b
+2:      moveq   #UE_MAX,%d1
+        cmpl    %d1,%d3
+        bge.s   9f
+        movel   %d0,(%a4,%d3.l*4)
+        addql   #1,%d3
+9:      rts
 
 ef_no:
         moveq   #1,%d0
@@ -2164,8 +2252,9 @@ tk_done:
         rts
 
 
-| Slot zero is NOTE on MIDI, but INAB on THRU. Use the audio descriptor's
-| actual parameter name for both the page hint and the RIGHT handler.
+| Slot zero is NOTE on MIDI, but INAB on THRU and TUNE on OCTA-303 / WAVE CF.
+| Use the audio descriptor's actual parameter name for both the page hint
+| and the RIGHT handler.
 | Keeps d2/d3, clobbers d0/d1/a0/a1 like ef_dest_label.
 ef_pitch_selected:
         tstl    ef_dest
@@ -2179,7 +2268,13 @@ eps_page:
         bne.s   eps_page
         movel   %a0@,%d0
         cmpil   #0x50544348,%d0         | PTCH
+        beq.s   eps_name
+        cmpil   #0x54554e45,%d0         | TUNE (OCTA-303, WAVE CF)
         bne.s   eps_no
+eps_name:
+        bsr.w   ef_pitch_kind           | ef_trk set by ef_dest_label
+        tstl    %d0
+        bmi.s   eps_no
 eps_yes:
         moveq   #1,%d0
         rts
@@ -3005,7 +3100,12 @@ ef_write_dest:
         bne.w   ed_generic
         movel   ef_dest,%d0
         tstl    %d0
-        beq.w   ef_write_ptch           | PTCH special
+        bne.s   ed_notptch
+        bsr.w   ef_pitch_kind
+        tstl    %d0
+        bpl.w   ef_write_ptch           | PTCH / TUNE special
+        bra.s   ed_generic_base         | slot 0 is not a pitch here
+ed_notptch:
         moveq   #LOCK_VOL,%d1
         cmpl    %d1,%d0
         beq.w   ef_write_vol            | velocity: ceiling = AMP VOL
@@ -3155,7 +3255,9 @@ ev1:    movel   %d1,%d0
 | lock encodes base_st+delta. Center is Part PLAYBACK PTCH (overall
 | knob), not unison - same byte stock unlocks fall back to.
 | FM/SY/CX: raw=64+st (max_rad=PIT_RAD). Sample: raw=64+5·st (PIT_SAMP).
-| Clamp raw to 0..127 before store.
+| OCTA-303 / WAVE CF TUNE: raw=64+st; BLKPYRAMD PTCH: raw=60+st (PIT_TUNE
+| both), folded by octaves into the machine's range (ef_pk_tab). Clamp raw
+| to 0..127 before store.
 | Caller keeps n in d5 and rot in d6 - park across the pick.
 | ef_tone_mask returns the selected SEQ-owned scale as a 12-bit mask.
 ef_tone_mask:
@@ -3770,14 +3872,15 @@ ef_write_ptch:
         movel   %d6,-(%sp)              | park rot
         movel   %d4,-(%sp)              | park pulses
         movel   %d0,%d7                 | mask
-        bsr.w   ef_is_synth
-        moveq   #PIT_RAD,%d4            | max_rad
-        tstl    %d0
-        bne.s   1f
-        moveq   #PIT_SAMP,%d4
-1:      movel   %d0,-(%sp)              | park is_synth
+        bsr.w   ef_pitch_kind           | 0..3; ef_write_dest routed -1 away
+        lea     ef_pk_tab,%a0
+        movel   %d0,%d1
+        lsll    #2,%d1
+        moveq   #0,%d4
+        moveb   %a0@(0,%d1:l),%d4       | max_rad
+        movel   %d0,-(%sp)              | park pitch kind
         bsr.w   ef_part_ptch            | d0 = Part PTCH raw
-        movel   (%sp),%d1               | is_synth (still parked)
+        movel   (%sp),%d1               | pitch kind (still parked)
         tstl    %d1
         bne.s   ep_dsy
         subi.l  #64,%d0                 | sample: raw offset from unison
@@ -3802,7 +3905,12 @@ ep_sround_pos:
         blt.s   ep_dst
         addql   #1,%d0                 | nearest semitone above
         bra.s   ep_dst
-ep_dsy: subi.l  #64,%d0                 | synth: st = raw-64
+ep_dsy: lea     ef_pk_tab+1,%a0
+        lsll    #2,%d1
+        adda.l  %d1,%a0
+        moveq   #0,%d1
+        moveb   (%a0),%d1
+        subl    %d1,%d0                 | semitone machines: st = raw-centre
 ep_dst:
         movel   %d0,-(%sp)              | park base_st
         | DEPTH sets the pitch radius up to the machine's full range.
@@ -3890,12 +3998,30 @@ ep_got: | d1 = delta; abs st = base_st + delta
         move.l  %d1,%d3
         movel   (%sp)+,%d0              | base_st
         addl    %d0,%d3                 | abs st
-        movel   (%sp)+,%d0              | is_synth
-        tstl    %d0
+        movel   (%sp)+,%d1              | pitch kind
+        tstl    %d1
         beq.s   ep_samp
-        moveq   #64,%d0
-        addl    %d3,%d0                 | synth: 64+st
-        bra.s   ep_clamp
+        lea     ef_pk_tab,%a0
+        movel   %d1,%d0
+        lsll    #2,%d0
+        adda.l  %d0,%a0
+        moveq   #0,%d0
+        moveb   1(%a0),%d0
+        addl    %d3,%d0                 | centre+st
+        subql   #1,%d1
+        beq.s   ep_clamp                | FM/SY/CX clamp to 0..127
+        moveq   #0,%d1
+        moveb   2(%a0),%d1              | lo: fold up by octaves
+ep_tlo: cmpl    %d1,%d0
+        bge.s   ep_thi0
+        addil   #12,%d0
+        bra.s   ep_tlo
+ep_thi0:
+        moveb   3(%a0),%d1              | hi: fold down by octaves
+ep_thi: cmpl    %d1,%d0
+        ble.s   ep_ok
+        subil   #12,%d0
+        bra.s   ep_thi
 ep_samp: move.l  %d3,%d0
         moveq   #5,%d1
         muls.l  %d1,%d0
@@ -3914,7 +4040,7 @@ ep_ok:  movel   (%sp)+,%d4              | pulses
         bra.s   ep_store
 ep_clear_rad:
         movel   (%sp)+,%d0              | drop base_st
-        movel   (%sp)+,%d0              | drop is_synth
+        movel   (%sp)+,%d0              | drop pitch kind
         movel   (%sp)+,%d4
         movel   (%sp)+,%d6
         movel   (%sp)+,%d5
@@ -4523,10 +4649,14 @@ ecc_done:
         movel   (%sp)+,%d2
         rts
 
-| ef_is_synth: d0 := 1 when ef_trk's Part NEIGHBOR sig is "FM",1 / "SY",1
-| / "CX",1 (same semitone encoding as qz_is_synth / qz_fmtrack). Else 0.
+| ef_pitch_kind: d0 := how ef_trk's slot 0 encodes pitch (ef_pk_tab row).
+|  0 STATIC / FLEX / PICKUP sample PTCH, 5 raw a semitone around 64.
+|  1 sig "FM",1 / "SY",1 / "CX",1: raw 64+st (qz_is_synth / qz_fmtrack).
+|  2 FLEX signed "TB",1 (OCTA-303) or "WV",1 (WAVE CF): TUNE, 64 = C3.
+|  3 FLEX signed "OT",1 (BLKPYRAMD): PTCH 0..96, 0 = C0.
+| -1 no pitch on slot 0 (THRU, NEIGHBOR, ANALOG BD "AB", DRUMMER "DR").
 | Clobbers d0/d1/a0/a1 only - caller parks what it needs.
-ef_is_synth:
+ef_pitch_kind:
         moveal  DBPTR,%a0
         moveq   #0,%d0
         moveb   UI_PART,%d0
@@ -4537,21 +4667,55 @@ ef_is_synth:
         mulu.w  #30,%d0
         lea     %a0@(0,%d0:l),%a1
         addal   #SIG_OFF,%a1            | NEIGHBOR column
+        move.l  ef_trk,%d1
+        addal   %d1,%a0
+        addal   #MACH_OFF,%a0           | a0 = this track's machine byte
         moveq   #0,%d0
         moveb   2(%a1),%d0
         subql   #1,%d0
-        bne.s   eis_no                  | not kind 1
+        bne.s   epk_stock               | not kind 1
         moveq   #0,%d0
         movew   (%a1),%d0
         cmpil   #0x464d,%d0             | "FM"
-        beq.s   eis_yes
+        beq.s   epk_synth
         cmpil   #0x5359,%d0             | "SY"
-        beq.s   eis_yes
+        beq.s   epk_synth
         cmpil   #0x4358,%d0             | "CX"
-        bne.s   eis_no
-eis_yes: moveq   #1,%d0
+        beq.s   epk_synth
+        moveq   #2,%d1
+        cmpil   #0x5442,%d0             | "TB"
+        beq.s   epk_flex
+        cmpil   #0x5756,%d0             | "WV"
+        beq.s   epk_flex
+        moveq   #3,%d1
+        cmpil   #0x4f54,%d0             | "OT"
+        beq.s   epk_flex
+        moveq   #-1,%d1
+        cmpil   #0x4142,%d0             | "AB"
+        beq.s   epk_flex
+        cmpil   #0x4452,%d0             | "DR"
+        bne.s   epk_stock
+epk_flex:
+        moveq   #0,%d0
+        moveb   (%a0),%d0
+        subql   #1,%d0                  | FLEX
+        bne.s   epk_stock               | a stale sig on another machine
+        movel   %d1,%d0
         rts
-eis_no: moveq   #0,%d0
+epk_synth:
+        moveq   #1,%d0
+        rts
+epk_stock:
+        moveq   #0,%d0
+        moveb   (%a0),%d0
+        subql   #2,%d0                  | THRU
+        beq.s   epk_none
+        subql   #1,%d0                  | NEIGHBOR
+        beq.s   epk_none
+        moveq   #0,%d0
+        rts
+epk_none:
+        moveq   #-1,%d0
         rts
 
 | d2=step, a2=trac -> a0=&byte, d0=bitmask. Clobbers d0,d1,a0.
@@ -5252,6 +5416,32 @@ ef_clear_finish:
         rts
 
 | ---- layer --------------------------------------------------------------
+| Stock's key and encoder dispatch keeps the key number in d2 across the
+| handler call and indexes the key cache with it afterwards; the handlers
+| below clobber d2-d7/a2-a6, so the layer tables call them through these.
+        .macro  kthunk name
+\name\()_k:
+        lea     -44(%sp),%sp
+        movem.l %d2-%d7/%a2-%a6,(%sp)
+        movel   56(%sp),-(%sp)
+        movel   56(%sp),-(%sp)
+        movel   56(%sp),-(%sp)
+        bsr.w   \name
+        lea     12(%sp),%sp
+        movem.l (%sp),%d2-%d7/%a2-%a6
+        lea     44(%sp),%sp
+        rts
+        .endm
+        kthunk  ef_yes
+        kthunk  ef_no
+        kthunk  ef_page_left
+        kthunk  ef_page_right
+        kthunk  ef_cue
+        kthunk  ef_midikey
+        kthunk  ef_trkkey
+        kthunk  ef_enc
+        kthunk  ef_cl_cancel
+
         .balign 4
 EF_LAYER:
         .long   0, EF_KEYS, EF_ENCS, 0, 0, -1, -1
@@ -5260,70 +5450,70 @@ EF_KEYS:
         | stock (never closes). Listing PAGE here swallows step banks.
 
         .byte   0x31, 0                 | YES
-        .long   ef_yes, 0, 0, 0, 0
+        .long   ef_yes_k, 0, 0, 0, 0
         .word   0, 0
         .byte   0x32, 0                 | NO
-        .long   ef_no, 0, 0, 0, 0
+        .long   ef_no_k, 0, 0, 0, 0
         .word   0, 0
         | LEFT/RIGHT switch SEQ knob pages. UP/DOWN / PROJ/PART/AED/ARR
         | remain omitted (a -1 row can break stock navigation).
         .byte   0x34, 0                 | LEFT (stock key id used by FUNC+LEFT)
-        .long   ef_page_left, 0, 0, 0, 0
+        .long   ef_page_left_k, 0, 0, 0, 0
         .word   0, 0
         .byte   0x21, 0                 | RIGHT
-        .long   ef_page_right, 0, 0, 0, 0
+        .long   ef_page_right_k, 0, 0, 0, 0
         .word   0, 0
         | Listing with 0 swallows; listing with -1 still stores aux=0
         | and has been seen to break DOWN after Euclid → PROJECT.
         .byte   0x2a, 0                 | CUE: press+release (0 swallows release)
-        .long   ef_cue, ef_cue, 0, 0, 0
+        .long   ef_cue_k, ef_cue_k, 0, 0, 0
         .word   0, 0
         .byte   0x35, 0                 | MIDI: forward through stock / SRC3 KEY
-        .long   ef_midikey, ef_midikey, 0, 0, 0
+        .long   ef_midikey_k, ef_midikey_k, 0, 0, 0
         .word   0, 0
         | BANK (0x2f): omit - FUNC+BANK is Detour / MKI SymbolRef only.
 | T1..T8: press+release both ef_trkkey (stock needs release to clear
 | HELD). On press, retarget SEQ only if UI_WINDOW still ef_win.
         .byte   0x10, 0
-        .long   ef_trkkey, ef_trkkey, 0, 0, 0
+        .long   ef_trkkey_k, ef_trkkey_k, 0, 0, 0
         .word   0, 0
         .byte   0x11, 0
-        .long   ef_trkkey, ef_trkkey, 0, 0, 0
+        .long   ef_trkkey_k, ef_trkkey_k, 0, 0, 0
         .word   0, 0
         .byte   0x12, 0
-        .long   ef_trkkey, ef_trkkey, 0, 0, 0
+        .long   ef_trkkey_k, ef_trkkey_k, 0, 0, 0
         .word   0, 0
         .byte   0x13, 0
-        .long   ef_trkkey, ef_trkkey, 0, 0, 0
+        .long   ef_trkkey_k, ef_trkkey_k, 0, 0, 0
         .word   0, 0
         .byte   0x14, 0
-        .long   ef_trkkey, ef_trkkey, 0, 0, 0
+        .long   ef_trkkey_k, ef_trkkey_k, 0, 0, 0
         .word   0, 0
         .byte   0x15, 0
-        .long   ef_trkkey, ef_trkkey, 0, 0, 0
+        .long   ef_trkkey_k, ef_trkkey_k, 0, 0, 0
         .word   0, 0
         .byte   0x16, 0
-        .long   ef_trkkey, ef_trkkey, 0, 0, 0
+        .long   ef_trkkey_k, ef_trkkey_k, 0, 0, 0
         .word   0, 0
         .byte   0x17, 0
-        .long   ef_trkkey, ef_trkkey, 0, 0, 0
+        .long   ef_trkkey_k, ef_trkkey_k, 0, 0, 0
         .word   0, 0
         .byte   0xff, 0
         .long   0, 0, 0, 0, 0
         .word   0, 0
 EF_ENCS:
         .byte   0, 0                    | A = PULSE
-        .long   ef_enc, 0, 0, 0, 0
+        .long   ef_enc_k, 0, 0, 0, 0
         .byte   1, 0                    | B = ROT
-        .long   ef_enc, 0, 0, 0, 0
+        .long   ef_enc_k, 0, 0, 0, 0
         .byte   2, 0                    | C = LANE
-        .long   ef_enc, 0, 0, 0, 0
+        .long   ef_enc_k, 0, 0, 0, 0
         .byte   3, 0                    | D = DEST
-        .long   ef_enc, 0, 0, 0, 0
+        .long   ef_enc_k, 0, 0, 0, 0
         .byte   4, 0                    | E = DEPTH
-        .long   ef_enc, 0, 0, 0, 0
+        .long   ef_enc_k, 0, 0, 0, 0
         .byte   5, 0                    | F = empty
-        .long   ef_enc, 0, 0, 0, 0
+        .long   ef_enc_k, 0, 0, 0, 0
         .byte   6, 0                    | LEVEL = noop
         .long   ef_level, 0, 0, 0, 0
         .byte   0xff, 0
@@ -5363,7 +5553,7 @@ EF_CL_NO_LAYER:
         .long   0, EF_CL_NO_KEYS, 0, 0, 0, -1, -1
 EF_CL_NO_KEYS:
         .byte   0x32, 0                 | NO
-        .long   ef_cl_cancel, 0, 0, 0, 0
+        .long   ef_cl_cancel_k, 0, 0, 0, 0
         .word   0, 0
         .byte   0xff, 0
         .long   0, 0, 0, 0, 0
@@ -5484,6 +5674,13 @@ ef_scale_masks:
 ef_scale_counts:
         .byte 7,7,5,7,7,7,6,12
         .balign 4
+| ef_pitch_kind rows: max radius, raw of st 0 (a C on the semitone
+| machines, so SEQ's ROOT matches the note names), lowest raw, highest raw.
+ef_pk_tab:
+        .byte PIT_SAMP, 64, 0, 127              | sample PTCH (5 raw a semitone)
+        .byte PIT_RAD, 64, 0, 127               | FM / SY / CX
+        .byte PIT_TUNE, 64, TUNE_LO, TUNE_HI    | OCTA-303 / WAVE CF TUNE
+        .byte PIT_TUNE, BP_C5, 0, BP_HI         | BLKPYRAMD PTCH
 | SEQ mark 29×29: 3 rings E(4,12) LED; mid hollow squares at 45°.
 | Column-major; bit 31 = bottom row.
 ef_icon_bmp:
@@ -6313,6 +6510,8 @@ ef_pending_cursor: .long 0
 ef_dlg_guard: .long 0                   | 1: soft-close on class-5 eviction
 ef_need_restore: .long 0                | 1: recreate window after dialog
 ef_layer_on: .long 0                    | 1: EF_LAYER registered (LPOP even if ef_win=0)
+ef_unlink_busy: .long 0
+ef_unlink_queue: .space 256
 ef_cl_nolayer: .long 0                  | 1: EF_CL_NO_LAYER pushed over CLEAR
 ef_cl_sel:  .long 0                     | clear LISTPOP cursor
 ef_nowrite: .long 0                     | refused file: do not overwrite

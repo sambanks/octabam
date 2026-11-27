@@ -57,6 +57,17 @@ MODULE = Module(
     author="ilia-murzinov",
     author_url="https://github.com/ilia-murzinov",
     evidence=(
+        Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", image="OCTABAM T4", date="2026-11-26",
+                 commit="ce0161df",
+                 note="Owner confirmed OCTABAMT4 on the MKII: OCTA-303 and WAVE CF TUNE Harmony and "
+                      "in-scale fills; FLEX PTCH unchanged; TRACK+PAGE release closes SEQ; bare CUE "
+                      "after close (including TRACK hold and CUE+TRACK paths) does not reopen SEQ. "
+                      "No audio or timing measurements reported."),
+        Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", image="OCTABAM T3", date="2026-11-26",
+                 commit="c3db2a6d",
+                 note="Owner confirmed OCTABAMT3 on the MKII: OCTA-303 and WAVE CF TUNE open Harmony "
+                      "and in-scale fills; FLEX PTCH unchanged; bare CUE after closing SEQ does not "
+                      "reopen the layer. No audio or timing measurements reported."),
         Evidence(Level.UNIT, unit="MKII", who="ilia-murzinov", image="OCTABAM 83.RMX", date="2026-11-25",
                  commit="8a71eeda2a73e7721d6b306e23fc16c259e20608",
                  note="Owner confirmed the bundled SEQ changes work on the MKII. This image includes live audio/MIDI switching and the RAND/JUMP pitch changes. No audio or timing measurements reported."),

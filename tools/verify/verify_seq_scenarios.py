@@ -50,6 +50,10 @@ DIALOG_OPEN = 0x460e5cd0
 UI_WINDOW = 0x460d175c
 POPUP = 0x46c7d34c
 HELD = 0x460fab40          # stock track-held bitmask (TRK_STOCK press)
+KEY_HELD = 0x46c7d8ee      # is_key_held: *(base + code*24); set_key_state 0x40031734
+KEY_STRIDE = 24
+CUE_CODE = 0x2a
+YES_CODE = 0x31
 MUTE_CUE = 0x80000008      # mute bit 8+t, cue bit 16+t (MIDI.md)
 POOL = 0x460e70e0          # machine / sample chooser pool (double-tap QA)
 
@@ -137,6 +141,11 @@ def popcount_mask(m: bytes) -> int:
 def mask_bit(m: bytes, step: int) -> bool:
     """Same packing as ef_bit_addr: byte 7-(step>>3), bit (step&7)."""
     return bool(m[7 - (step >> 3)] & (1 << (step & 7)))
+
+
+def key_held_u32(p, code: int) -> int:
+    """Stock runtime held flag for a panel keycode (docs/firmware memory-map)."""
+    return p.long(KEY_HELD + code * KEY_STRIDE)
 
 
 def locks_have_trig_or_tl(p, dest_locks: list[int], trk: int = 0) -> bool:
@@ -291,6 +300,74 @@ def run_scenarios() -> int:
                   and port.long(local_sym("ef_win")) == 0,
                   f"geometry={popup_geometry(port.rt.uc)} ef_win={port.long(local_sym('ef_win')):#x}")
             port.press("no", settle=400)
+        s.open_seq()
+
+        # --- CUE release: stock key cache must stay on 0x2a (ef_cue_k) ---
+        poke32(port, s.unlocked, 1)
+        poke32(port, s.ask, 0)
+        port.press("cue", settle=700)
+        check("CUE release clears held on CUE (0x2a)",
+              key_held_u32(port, CUE_CODE) == 0,
+              f"cue={key_held_u32(port, CUE_CODE):#x}")
+        check("CUE release does not mark YES (0x31) held",
+              key_held_u32(port, YES_CODE) == 0,
+              f"yes={key_held_u32(port, YES_CODE):#x}")
+        s.close_seq()
+        check("SEQ closed before post-layer CUE", port.long(s.ef) == 0)
+        port.press("cue", settle=700)
+        check("bare CUE after SEQ close does not reopen SEQ",
+              port.long(s.ef) == 0,
+              f"ef_win={port.long(s.ef):#x}")
+        check("CUE release after SEQ close still clears CUE held",
+              key_held_u32(port, CUE_CODE) == 0,
+              f"cue={key_held_u32(port, CUE_CODE):#x}")
+        s.open_seq()
+
+        # --- TRACK+PAGE toggle and stale-layer close (unlink + LREBUILD) ---
+        s.close_seq()
+        port.chord("t1", "page", settle=500)
+        check("TRACK+PAGE release opens SEQ when closed",
+              port.long(s.ef) != 0, f"ef_win={port.long(s.ef):#x}")
+        port.chord("t1", "page", settle=500)
+        check("TRACK+PAGE release closes SEQ when open",
+              port.long(s.ef) == 0, f"ef_win={port.long(s.ef):#x}")
+        poke32(port, s.unlocked, 1)
+        poke32(port, s.ask, 0)
+        port.press("cue", settle=700)
+        check("bare CUE after TRACK+PAGE close does not reopen SEQ",
+              port.long(s.ef) == 0, f"ef_win={port.long(s.ef):#x}")
+        check("CUE held clear after TRACK+PAGE toggle path",
+              key_held_u32(port, CUE_CODE) == 0,
+              f"cue={key_held_u32(port, CUE_CODE):#x}")
+
+        s.open_seq()
+        port.key("t1", True)
+        port.run(120)
+        # Stock TRACK-held sub-map owns [NO]; close via TRACK+PAGE release instead.
+        port.chord("t1", "page", settle=500)
+        check("SEQ closes with TRACK key held (TRACK+PAGE release)",
+              port.long(s.ef) == 0, f"ef_win={port.long(s.ef):#x}")
+        port.key("t1", False)
+        port.run(120)
+        poke32(port, s.unlocked, 1)
+        poke32(port, s.ask, 0)
+        port.press("cue", settle=700)
+        check("bare CUE after TRACK-held NO does not reopen SEQ",
+              port.long(s.ef) == 0, f"ef_win={port.long(s.ef):#x}")
+        check("CUE held clear after TRACK-held close",
+              key_held_u32(port, CUE_CODE) == 0)
+
+        s.open_seq()
+        port.chord("cue", "t1", settle=500)
+        s.close_seq()
+        poke32(port, s.unlocked, 1)
+        poke32(port, s.ask, 0)
+        port.press("cue", settle=700)
+        check("bare CUE after CUE+TRACK and NO does not reopen SEQ",
+              port.long(s.ef) == 0, f"ef_win={port.long(s.ef):#x}")
+        check("CUE held clear after CUE+TRACK close",
+              key_held_u32(port, CUE_CODE) == 0)
+
         s.open_seq()
 
         # --- Place sample trigs (TRIG, PTCH, DPTH 0) ---

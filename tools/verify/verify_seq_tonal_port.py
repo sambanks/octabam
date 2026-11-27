@@ -111,6 +111,42 @@ def main() -> int:
             check("LEFT restores page 1/2 without changing the grid",
                   p.long(page) == 0 and seq.mask_of(p) == grid,
                   f"page={p.long(page)} grid={seq.mask_of(p).hex()} original={grid.hex()}")
+
+            # Signed FLEX tracks: slot 0 is one raw step per semitone on
+            # OCTA-303 / WAVE CF (64 = C3) and BLKPYRAMD (0 = C0), unlike a
+            # sample's five; ANALOG BD's PITCH is a frequency, not a note.
+            sig = part + seq.SIG_OFF
+            tune = part + 0x8edaa + 6  # FLEX PLAYBACK slot 0, T1
+            original_sig = p.peek(sig, 3)
+            original_tune = p.peek(tune, 1)
+            major = {0, 2, 4, 5, 7, 9, 11}
+            for name, signature, top, lo, c0 in (
+                    ("OCTA-303 TUNE", b"TB\x01", 88, 40, 64),
+                    ("WAVE CF TUNE", b"WV\x01", 88, 40, 64),
+                    ("BLKPYRAMD PTCH", b"OT\x01", 96, 0, 60)):
+                p.poke(sig, signature)
+                p.poke(tune, bytes((top,)))
+                s.prime(lane=0, dest=0, depth=127, pulses=8, trig_pulses=8)
+                s.yes()
+                locks = [v for v in seq.locks_of(p, seq.LOCK_PTCH) if v != 0xFF]
+                check(f"{name} fill writes in-scale semitones inside its range",
+                      len(locks) == 8 and all(lo <= v <= top for v in locks)
+                      and all((v - c0) % 12 in major for v in locks),
+                      f"locks={locks}")
+            p.poke(sig, b"AB\x01")
+            p.poke(tune, bytes((88,)))
+            p.press("right", settle=150)
+            check("ANALOG BD PITCH cannot open Harmony",
+                  p.long(page) == 0, f"page={p.long(page)}")
+            s.prime(lane=0, dest=0, depth=2, pulses=8, trig_pulses=8)
+            s.yes()
+            locks = [v for v in seq.locks_of(p, seq.LOCK_PTCH) if v != 0xFF]
+            check("ANALOG BD PITCH fill varies around the Part value",
+                  len(locks) == 8 and all(86 <= v <= 90 for v in locks)
+                  and any(v != 89 for v in locks),
+                  f"locks={locks}")
+            p.poke(sig, original_sig)
+            p.poke(tune, original_tune)
             s.close_seq()
 
             # The stock Project menu must own arrows as soon as SEQ is closed.

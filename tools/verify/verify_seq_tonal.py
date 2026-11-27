@@ -350,6 +350,27 @@ def main() -> int:
           and "movel   (%sp)+,%d4" in chord
           and "movel   %d4,-(%sp)" in chord_clear
           and "movel   (%sp)+,%d4" in chord_clear)
+    kind = block(src, "\nef_pitch_kind:\n", "\nef_bit_addr:\n")
+    selected = block(src, "\nef_pitch_selected:\n", "\nef_dest_label:\n")
+    dest = block(src, "\nef_write_dest:\n", "\ned_generic:\n")
+    pk_tab = block(src, "\nef_pk_tab:\n", "\n| SEQ mark")
+    check("each signed machine's slot 0 has its own pitch kind",
+          all(f"#{sig},%d0" in kind for sig in
+              ("0x464d", "0x5359", "0x4358", "0x5442", "0x5756", "0x4f54", "0x4142", "0x4452"))
+          and "#MACH_OFF,%a0" in kind and "subql   #2,%d0                  | THRU" in kind
+          and "moveq   #-1,%d0" in kind)
+    check("slot 0 without a pitch takes the generic Part +/- DPTH path",
+          "bsr.w   ef_pitch_kind" in dest and "bpl.w   ef_write_ptch" in dest
+          and "bra.s   ed_generic_base" in dest
+          and "bsr.w   ef_pitch_kind" in selected and "bmi.s   eps_no" in selected)
+    check("TUNE opens Harmony and semitone machines fold by octaves into their range",
+          "#0x54554e45,%d0" in selected
+          and "bsr.w   ef_pitch_kind" in ptch and "ef_pk_tab" in ptch
+          and "ep_tlo:" in ptch and "ep_thi:" in ptch
+          and pk_tab.count(".byte") == 4
+          and "PIT_TUNE, 64, TUNE_LO, TUNE_HI" in pk_tab
+          and "PIT_TUNE, BP_C5, 0, BP_HI" in pk_tab
+          and ".set    BP_C5,     60" in src and ".set    BP_HI,     96" in src)
     check("audio pitch ignores MIDI-only harmony and mode settings",
           "ef_tone_harm" not in ptch
           and "ef_tone_mode" not in block(src, "ef_pitch_rank:", "ef_snap_note:"))
