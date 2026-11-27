@@ -49,6 +49,22 @@ velocity at every knob step, and the centre's velocity is pitch. A hand
 twist, a p-lock and an LFO on either all pass through it; an LFO on SPD or
 DEP faster than a few Hz is softened, and a square LFO's edge is rounded.
 
+## FUNC stops
+
+Holding FUNCTION while turning a knob walks it through stops, one a detent, instead of stock's jump to the ends (or to 0/64/127 on MIX, which VIBRATO inherited from DARK REV's slot-5 handler). Without FUNCTION a knob turns as stock: one unit a detent, x7 pushed.
+
+| knob | stops (raw) | what they are |
+|---|---|---|
+| SPD | 0 21 43 64 85 107 127 | 0.25, 0.5, 1, 2, 4, 8 Hz (64 exact, the others within 1.2 %), 15.5 Hz |
+| DEP | 0 14 28 40 64 90 110 127 | 0, 1.2, 4.9, 9.9, 25.4, 50.2, 75.0, 100 cents; on SQR, 64 / 90 / 110 / 127 are quarter-tone, semitone, three-quarter-tone and whole-tone trills |
+| SLEW | 0 32 64 96 127 | none, then 1/8, 1/4, 3/8, ~1/2 of a quarter cycle |
+| WID | 0 21 43 64 85 107 127 | 0, 30, 60, 90, 120, 150, 179 degrees (on RND, sevenths from mono to independent) |
+| MIX | 0 32 64 96 127 | quarters; 0 exact passthrough |
+
+A FUNC jump on SPD or DEP goes through the same two-one-pole glide as any other jump, so it lands without a click.
+
+How: LOFI2's mechanism (see `modules/lofi2/README.md`, "FUNC stops"). `func_stops.s`, a ColdFire `Linked` unit, gives each continuous knob its own entry and table, planted at `P+0x12a + 4*slot` through `Param(word_12a=)`; SHP keeps the stock handler. `tools/verify/verify_vibrato_knobs.py` (a gate) assembles the unit alone and runs every entry under Unicorn: each table both ways and from every value, multi-detent turns, plain and pushed turns, and PERSONALIZE's FUNCTION + ENCODER.
+
 ## Design
 
 Prototyped in Faust (`vibrato.dsp` beside this file: the listening model,

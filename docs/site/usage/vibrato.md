@@ -32,6 +32,12 @@ audio through untouched.
   avoid clicks. Fast knob moves and parameter locks glide into the new setting:
   SPD and DEP follow changes over about 20 ms, which softens LFO modulation
   faster than a few Hz.
+- Holding FUNCTION while turning a knob jumps between useful settings, one
+  per click, instead of sweeping to the ends: SPD steps through octaves
+  (0.25, 0.5, 1, 2, 4, and 8 Hz); DEP through 1, 5, 10, 25, 50, 75, and 100
+  cents (on SQR, 25 to 100 step a quarter tone at a time); WID in 30-degree
+  steps; and SLEW and MIX in quarters. Each list also includes both ends of
+  the knob.
 
 ## Parameters
 
