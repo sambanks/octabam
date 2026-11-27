@@ -59,7 +59,7 @@ def health(u):
         return False, str(e)
 
 
-def switch(names, cycles):
+def switch(names, cycles, counter=None):
     """Boot `names` round-robin for `cycles` boots. Returns (rows, ok); stops at the first boot that does not return."""
     rows, ok = [], True
     for i in range(cycles):
@@ -74,12 +74,15 @@ def switch(names, cycles):
             park = int.from_bytes(ev.peek(u.peek1, MB_PARK, 4), "big")
             alive, why = health(u)
             row.update(mb_park=park, counting=alive, health=why)
+            if counter is not None:
+                row["counter"] = int.from_bytes(ev.peek(u.peek1, counter, 4), "big")
         except (SystemExit, Exception) as e:  # noqa: BLE001
             row.update(mb_park=None, counting=False, health=f"no reading: {e}")
         row["pass"] = r.returncode == 0 and row["mb_park"] is not None and row["mb_park"] & 3 == 3 and row["counting"]
         rows.append(row)
         print(f"switch {i + 1}/{cycles} {name}: {'PASS' if row['pass'] else 'FAIL'} rc={r.returncode} "
-              f"MB_PARK={row['mb_park']} counting={row['counting']} {row['seconds']} s", flush=True)
+              f"MB_PARK={row['mb_park']} counting={row['counting']} {row['seconds']} s"
+              + (f" counter={row['counter']}" if "counter" in row else ""), flush=True)
         if not row["pass"]:
             ok = False
             if "no answer" in " ".join(row["tail"]) or r.returncode:
@@ -148,7 +151,9 @@ def diskread(path, reads, play=True):
     return res, res["pass_"]
 
 
-IMAGES = (("V06_OCT", "OCTABAM T1.RMX"), ("V06_RIG", "V06-RIG T1.RMX"), ("V06_VRB", "OCTABAM-VRB T1.RMX"))
+def images(tag):
+    """The project and the .RMX of each image of the suite; `tag` is the build tag of `make rmx BUILD=<tag> RMX="<NAME> <tag>"`."""
+    return (("V06_OCT", f"OCTABAM {tag}.RMX"), ("V06_RIG", f"V06-RIG {tag}.RMX"), ("V06_VRB", f"OCTABAM-VRB {tag}.RMX"))
 FATAL = {"CRASH", "FREEZE", "UNHEALTHY", "OVERLOAD", "DROPS", "NO AUDIO CAPTURED"}
 SILENT_DB = -70.0
 PROJECT = "RMT_SFX_01"
@@ -176,8 +181,8 @@ def suite(a):
     with open(os.path.join(dest, "v06.json")) as f:
         projects = json.load(f)
     summary, ok = {}, True
-    names = [img for _p, img in IMAGES]
-    for proj, img in IMAGES:
+    names = [img for _p, img in images(a.tag)]
+    for proj, img in images(a.tag):
         step = {"image": img}
         summary[proj] = step
         if sh(os.path.join(HERE, "ot_card.py"), "boot", img):
@@ -230,12 +235,15 @@ def main():
         p = sub.add_parser(n)
         p.add_argument("--names", required=True, help="comma-separated .RMX names in /BRAIN/REMIXES")
         p.add_argument("--cycles", type=int, default=20)
+        if n == "switch":
+            p.add_argument("--counter", type=lambda x: int(x, 0), help="a 32-bit cell to PEEK after each boot (REMOTE)")
         if n == "run":
             p.add_argument("--file")
             p.add_argument("--reads", type=int, default=6)
             p.add_argument("--label", default=time.strftime("%Y%m%d-%H%M%S"))
     p = sub.add_parser("suite")
-    p.add_argument("--dest", default=os.path.join(ROOT, "out", "v06b"))
+    p.add_argument("--dest", default=os.path.join(ROOT, "out", "v06c"))
+    p.add_argument("--tag", default="T1", help="the images' build tag: OCTABAM <tag>.RMX, V06-RIG <tag>.RMX, OCTABAM-VRB <tag>.RMX")
     p.add_argument("--cycles", type=int, default=12)
     p.add_argument("--reads", type=int, default=6)
     p.add_argument("--label", default=time.strftime("%Y%m%d-%H%M%S"))
@@ -244,7 +252,7 @@ def main():
     p.add_argument("--reads", type=int, default=6)
     a = ap.parse_args()
     if a.cmd == "switch":
-        return 0 if switch(a.names.split(","), a.cycles)[1] else 1
+        return 0 if switch(a.names.split(","), a.cycles, a.counter)[1] else 1
     if a.cmd == "suite":
         return suite(a)
     if a.cmd == "diskread":
