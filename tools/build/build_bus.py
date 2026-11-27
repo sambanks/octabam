@@ -1247,9 +1247,10 @@ def main():
             sys.exit(f"{_u.label}: past the stock zero run")
         img[_at - BASE:_at - BASE + len(_b)] = _b
         _sym[_u.label] = _syms
+        _matches = " -- matches the author's build at 0x%08x" % _uref[0] if _uref else ""
         print(f"  {_m.key}: {_u.label} {len(_b)} B linked at 0x{_at:08x}"
               f"{' (pinned)' if _u.cave_addr is not None else ''}"
-              f"{' -- matches the author\'s build at 0x%08x' % _uref[0] if _uref else ''}")
+              f"{_matches}")
         if _in:
             if _at + len(_b) > _cave_top:
                 _cave_top, _last_placed = _at + len(_b), f"{_m.key}'s {_u.label}"
