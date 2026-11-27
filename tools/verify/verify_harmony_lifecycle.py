@@ -14,11 +14,7 @@ def main():
     m = Machine(symbols); u = m.uc; s = m.sym
     m.call('store_part_activate', stop=0x4000f938)
     m.call('mhc_lock_init')  # Boot initialization is outside the per-operation measurement.
-    if 'scn_slot_ptr' in s:
-        # A loaded project has initialized Scenes before interactive edits.
-        # Run its real public initialization, including the 256 KiB fill;
-        # never count cold boot as an interactive mode edit or raise LIMIT.
-        m.call('scn_slot_ptr', 0, 0)
+    m.initialize_scenes()
     # A loaded empty bank: mapped firmware bytes are not a native pattern.
     for pattern in range(16):
         u.mem_write(B+pattern*0x8ed8+0x8e57, b'\x00')

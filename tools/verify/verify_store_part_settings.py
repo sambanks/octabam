@@ -16,10 +16,7 @@ def symbols():
 
 def part_fixture():
     machine = Machine(symbols)
-    if 'mh_set' in machine.sym and 'scn_slot_ptr' in machine.sym:
-        # Project load initializes the 256 KiB Scenes library before Part edits.
-        # fill_ff executes three instructions per longword plus call overhead.
-        machine.call('scn_slot_ptr', 0, 0, instruction_budget=3 * (256 * 1024 // 4) + 256)
+    machine.initialize_scenes()
     return machine
 
 
