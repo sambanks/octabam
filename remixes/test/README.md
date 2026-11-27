@@ -120,6 +120,8 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`trackpatterns-core`](trackpatterns-core/README.md) | TRACK PATTERNS on the core modules (KITS, DIRECT_JUMP_KYOTI and the other core modules). |
 | [`transient`](transient/README.md) | TRANSIENT beside the stock effects (all but PLATE REV, whose words it takes). |
 | [`trig-mute`](trig-mute/README.md) | stock effects with TRIG MUTE: mute a single trig without deleting it. |
+| [`tuned-comb`](tuned-comb/README.md) | TUNED COMB on FX1 beside the stock effects (all but PLATE REV and SPRING REV). |
+| [`tuned-comb-fx2`](tuned-comb-fx2/README.md) | TUNED COMB live on FX1 and FX2 beside the stock effects (all but PLATE REV and SPRING REV). |
 | [`usb-io-main-ab`](usb-io-main-ab/README.md) | stock - SPATIALIZER + USB (MAIN out, AB in). |
 | [`usb-io-main-abcd`](usb-io-main-abcd/README.md) | stock - SPATIALIZER + USB (MAIN out, ABCD in). |
 | [`usb-io-main-cd`](usb-io-main-cd/README.md) | stock - SPATIALIZER + USB (MAIN out, CD in). |
