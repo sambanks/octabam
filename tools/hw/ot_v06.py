@@ -102,13 +102,22 @@ def largest(root):
 
 
 def blocks(path):
+    """The sha1 and first four bytes of every 64 KB block of `path`, read in 1 MB requests (a READ of more than 128 sectors is
+    what #1264 needs) around the Mac's file cache (F_NOCACHE), so each read goes to the unit."""
+    import fcntl
     out = []
-    with open(path, "rb") as f:
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        fcntl.fcntl(fd, 48, 1)                              # F_NOCACHE
         while True:
-            b = f.read(BLOCK)
-            if not b:
+            chunk = os.read(fd, 16 * BLOCK)
+            if not chunk:
                 return out
-            out.append((hashlib.sha1(b).hexdigest(), b[:4]))
+            for k in range(0, len(chunk), BLOCK):
+                b = chunk[k:k + BLOCK]
+                out.append((hashlib.sha1(b).hexdigest(), b[:4]))
+    finally:
+        os.close(fd)
 
 
 def diskread(path, reads, play=True):
@@ -119,6 +128,9 @@ def diskread(path, reads, play=True):
     if clock:
         clock.start()
         time.sleep(2.0)
+    import ot_midi
+    clocks = [0]
+    listener = ot_midi.In("Elektron Octatrack DPS-1", lambda d: clocks.__setitem__(0, clocks[0] + sum(1 for b in d if b == 0xF8)))
     u = ot_card.Unit()
     try:
         ot_card.enter_disk(u)
@@ -134,7 +146,6 @@ def diskread(path, reads, play=True):
             return dict(file=path, pass_=False, why="no card file larger than 64 KB"), False
         runs = []
         for _ in range(reads):
-            subprocess.run(["purge"], capture_output=True)      # drop the Mac's cache so the next read reaches the unit
             runs.append(blocks(path))
         n = len(runs[0])
         differ = [i for i in range(n) if len({r[i][0] for r in runs}) > 1]
@@ -146,6 +157,7 @@ def diskread(path, reads, play=True):
             clock.stop()
             clock.close()
         ot_card.leave_disk(u)
+    print(f"the unit sent {clocks[0]} MIDI clock bytes (F8) from before COMMAND 1 to the end of the reads")
     print(f"diskread {path}: {n} blocks x {reads} reads, {len(differ)} differing, {len(marked)} with 0f f8 00 00 in one read only: "
           f"{'PASS' if res['pass_'] else 'FAIL'}", flush=True)
     return res, res["pass_"]
