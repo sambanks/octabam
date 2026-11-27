@@ -299,9 +299,16 @@ def alive(s, lk, fk):
     return abs(g) * b / abs(1 - (1 - b) * complex(math.cos(w), -math.sin(w)))
 
 
+def loop_impulse(n, a=1 << 22):
+    """an impulse AT THE LOOP: a, then a >> DCB_SHIFT held. The input's DC
+    blocker passes it as exactly an impulse (the first sample sets its dc to
+    a/1024, and every one after gives hp = 0), so the gates below measure the
+    loop as before the blocker; its own gate is the DC one (7)"""
+    return [a] + [a >> REF.DCB_SHIFT] * (n - 1)
+
+
 N5 = 20000
-imp = [0] * N5
-imp[0] = FS // 2
+imp = loop_impulse(N5)
 worst, flat, n5 = 0.0, [], 0
 for pk, tk, lk, fk in [(2, 64, 60, 126), (14, 64, 30, 127), (26, 64, 40, 127), (26, 64, 50, 1),
                        (38, 64, 70, 127), (38, 40, 70, 127), (50, 64, 60, 124), (62, 64, 90, 124),
@@ -410,8 +417,7 @@ def t60(x, period):
 def ring_t60(pk, lk, fk):
     want = REF.T60_MIN * REF.T60_SPAN ** min(1, abs(fk - 64) / 63)
     n = int(SR * want * 1.3) + 16384
-    x = [0] * n
-    x[0] = FS // 2
+    x = loop_impulse(n)
     L, _ = _run(x, x, PTCH=pk, LP=lk, FB=fk, MIX=127)
     period = SR / (REF.F_A_SHARP_0 * 2 ** (pk / 12)) * (2 if fk < 64 else 1)
     got = t60([v / FS for v in L], period)
@@ -448,7 +454,8 @@ check("LP closed shortens the decay and never lengthens it (the DC mode never ou
 worst = 0
 for kw in (dict(PTCH=50, LP=127, FB=75), dict(PTCH=86, LP=110, FB=66), dict(PTCH=74, LP=100, FB=60),
            dict(PTCH=26, LP=127, FB=56)):
-    L, _ = _run(imp + [0] * 10000, imp + [0] * 10000, MIX=127, **kw)
+    x = loop_impulse(N5 + 10000)
+    L, _ = _run(x, x, MIX=127, **kw)
     worst = max(worst, max(abs(v) for v in L[-4000:]))
 check("after a note dies, at most 16 LSB remain (the loop's sum truncated toward zero: no limit cycle)", worst <= 16,
       f"largest {worst} LSB")
@@ -458,8 +465,7 @@ worst = 0
 for kw in (dict(PTCH=50, LP=60, FB=85), dict(PTCH=26, LP=40, FB=90), dict(PTCH=86, LP=110, FB=80)):
     want = REF.T60_MIN * REF.T60_SPAN ** min(1, abs(kw["FB"] - 64) / 63)
     n = int(SR * (2 * want + 0.6))
-    x = [0] * n
-    x[0] = FS // 2
+    x = loop_impulse(n)
     L, _ = _run(x, x, MIX=127, **kw)
     worst = max(worst, max(abs(v) for v in L[int(SR * (2 * want + 0.3)):]))
 check("LP closed: two T60s after an impulse, under -80 dBFS (no subsonic ring outlasting the note)",
