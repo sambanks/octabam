@@ -15,8 +15,11 @@ H = bytes.fromhex
 def _hooks_inc(modules, remix):
     """HOOKS's flags (modules/hooks): beside another module on the frame
     interrupt's entry, the routine returns and HOOKS replays the prologue."""
+    import os
     from remix import hooks_flags
-    return hooks_flags.inc("FRAME GUARD", modules)
+    inc = hooks_flags.inc("FRAME GUARD", modules)
+    llo = os.environ.get("FG_LLO")       # the lower edge in timer counts (132 a us) for a test build; unset: guard.s's 110 us
+    return inc + (f"        .set    FG_LLO, {int(llo, 0)}\n" if llo else "")
 
 
 MODULE = Module(

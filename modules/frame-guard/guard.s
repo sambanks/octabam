@@ -20,6 +20,9 @@
 | previous lateness plus the interval between entries less a frame (TGRID,
 | 0.5 us over the nominal so an error decays), floored at 0 and taken modulo
 | a frame. An entry between LLO and LHI late waits until it is LHI late.
+| LLO is 110 us. A build may define FG_LLO, in timer counts (132 a us), to move it: a lower edge
+| waits on entries that would have run on, and each wait is a click; a higher one lets through an
+| entry that stalls (an MKII's was 135.6 us late). See the README, "The lower edge".
 | After a skipped frame the interval is two frames less the lateness, so the
 | sum comes to one frame less TGRID's 0.5 us: lateness within 20 us of a
 | whole frame is taken as that frame (TNEAR). Until 13 Nov 2026 the modulo
@@ -34,9 +37,12 @@
         .equ    BODY,   0x4000aad8              | the handler after its displaced prologue
         .equ    TGRID,  47960                   | a frame + 0.5 us
         .equ    TNEAR,  TGRID-2640              | a frame less 20 us
-        .equ    LLO,    14520                   | 110 us
         .equ    LHI,    25080                   | 190 us
         .include "remix.inc"                    | HK_FRAME_ENTRY (modules/hooks)
+        .ifndef FG_LLO
+        .equ    FG_LLO, 14520                   | 110 us
+        .endif
+        .equ    LLO,    FG_LLO
 
         .text
         .globl  fg_in

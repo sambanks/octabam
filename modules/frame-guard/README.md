@@ -92,5 +92,7 @@ frame was followed by an entry 113.6 µs late, one 290 µs gap, and the unit ran
 interrupts in those images run 270 to 300 µs of the 362.8 µs period.
 
 The MKI's harmless bar starts (up to 134 µs late) and the MKII's stall (135.6 µs late) are 1.6 µs
-apart, so no single edge separates them on these two measurements. Not measured: the 110 µs edge on
-the image that stalled, over enough START and program-change cycles to count.
+apart, so no single edge separates them on these two measurements. `FG_LLO` (timer counts, 132 a µs; 110 µs is 14,520) is a build-time override for testing other
+edges: `FG_LLO=18480 make rmx REMIX=octabam BUILD=<tag>` builds the 140 µs edge; unset, the image is the
+110 µs one. Not measured: the 110 µs edge on the image that stalled, over enough START and
+program-change cycles to count.
