@@ -9,13 +9,17 @@ import sys
 import struct
 import subprocess
 from collections import Counter
+from unicorn import UC_PROT_READ
 from unicorn.m68k_const import *
 from verify_harmony_degree_files import Files, ROOT, BANK, STRIDE, PATTERN
 from harmony_retained import raw_p2 as raw
 from verify_store_retained import OFFSETS
 import harmony_retained as retained
 
-P2NV, P2SIZE = 0x100f8600, 15464
+P2NV = 0x100f8600
+# Stock-format P2NV ends at PATTERN MUTE's CS1 area. A 16-byte header
+# precedes the three-byte (step/slot, value) records.
+P2NV_CAPACITY = (0x100fbdc0 - P2NV - 16) // 3
 
 
 class Combined(Files):
@@ -26,6 +30,9 @@ class Combined(Files):
         nm = subprocess.check_output(['m68k-elf-nm', str(ROOT/'out/platform/runtime/runtime.elf')], text=True)
         self.sym.update({f[2]: int(f[0], 16) for f in (line.split() for line in nm.splitlines()) if len(f) == 3})
         assert 'ed_copy' in self.sym, 'build a remix selecting EDIT EVENTS and PLOCKS P2'
+        if 'rmt_st_newproj' in self.sym:
+            # REMOTE records timer 3's count when STORE announces the new project.
+            self.uc.mem_map(0xfc07c000, 0x1000, UC_PROT_READ)
         self.call('plk_init')
         self.call('mhc_lock_init')
 
@@ -52,7 +59,8 @@ class Combined(Files):
         if pc == 0x40016388:
             dst, src = struct.unpack('>2I', u.mem_read(sp+4, 8))
             self.copy_paths.append((self.string(dst), self.string(src)))
-        if pc in (0x400909d8, 0x4000fbb4):
+        if pc in (0x400909d8, 0x4000fbb4, 0x4001ffe4):
+            # REMOTE flushes its event through stock's card logger (LOGF).
             if pc == 0x4000fbb4:
                 bank = int.from_bytes(u.mem_read(sp+4, 4), 'big')
                 data=bytearray(u.mem_read(0x1001614e, STRIDE))
@@ -69,7 +77,7 @@ class Combined(Files):
         roots, qualities = super().seed()
         u, s = self.uc, self.sym
         p2 = bytearray(b'\xff'*98304)
-        records = [(i*9, i%128) for i in range(4768 if 'plk_nv_encode' not in s and 'plk_pool_encode' not in s else 10234)]
+        records = [(i*9, i%128) for i in range(P2NV_CAPACITY if 'plk_nv_encode' not in s and 'plk_pool_encode' not in s else 10234)]
         for i, value in records: p2[i] = value
         u.mem_write(s['STORE'], bytes(p2))
         return bytes(roots), bytes(qualities), bytes(p2), records
@@ -88,13 +96,11 @@ def main():
             print('[SKIP] Harmony/PLOCKS composition: select both clients')
             return
     m = Combined(); u, s = m.uc, m.sym
-    global P2SIZE
     pooled='plk_pool_encode' in s
     upstream_p2='plk_nv_encode' not in s and not pooled
-    P2SIZE=14320 if upstream_p2 else 20 if pooled else 15464
     magic=b'P2NV' if upstream_p2 else b'P2S1' if pooled else b'P2R1'
     roots, qualities, p2, records = m.seed()
-    guards=((P2NV-16,16),)  # MIDI Scenes owns the immediately following range
+    guards=((P2NV-16,16),)  # Other STORE clients own the following ranges
     for address, length in guards: u.mem_write(address, b'\xa5'*length)
     # Both full-capacity stores are checkpointed through the real shared entry.
     u.mem_write(m.stack+4, struct.pack('>I', 0))
