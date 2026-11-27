@@ -24,6 +24,7 @@ unit until this).
 | #1234 VERBERATION: stop kill, PRE | tail after a single and a double MIDI STOP; PRE 0 against 127 | not shown. A single MIDI STOP already gives digital silence, so there is no tail to cut; after STOP, STOP every track holds a DC offset of about -77 dBFS (not in the PR). The PRE windows overlapped the impulse stimulus, which is a burst and not a click |
 | #1219 VCA160 KEY | VCA160 on FX1 of T2 (steady noise), T1 hits every half second; the KEY knob swept by CC | KEY at the T1 position: T2's level follows T1's hits (correlation -0.72, T2's envelope range 23.5 dB); other positions and KEY untouched: no relation (about +0.03, 3 dB). Not run: CHARACTER's KEY and VOID still reading the peak; no image from before the change |
 | #1266 MIDI LOOPBACK | MIDI track 1 (channel 11, trigs on steps 4, 8, 12, 16, a CC 1 scene lock), DEST EXT, INT, BOTH, crossfader swept, the unit's USB MIDI out counted | EXT and BOTH: 4 note-ons, 4 note-offs and 75 to 77 CCs on channel 11. INT: none of either. Not shown: INT's notes reaching the unit's own receiver; no image from before the change |
+| #1270 OCTA303 v10.0 (PR branch merged onto main as `OCTABAM O3`; the images before are main's v7.1) | OCTA-303 on T1 and T2 with CUT, RES, ENV at 127: the 11.025 kHz bin over its band (9 to 13 kHz median) on T1; and with the accent knob at 127, ACCV 110 against ACCV 64: click events on T1 and clipped samples | the whistle: 23.0 and 20.2 dB on v7.1, 4.0 and 4.2 dB on v10.0. Not shown: the crack with ACCV over 64 (ACCV 110 and ACCV 64 give the same click counts on both images: 292 to 392 on v7.1, 116 to 246 against 138 to 152 on v10.0), clipping or wrapping (0 clipped samples on both). Not run: GATE 303's first trig after PLAY, dEVILish FM at high RES and ENV, the `TB303*` sample track now playing its sample, the ColdFire cost |
 | #1264 USB MIDI paused in DISK MODE | CLOCK SEND on, `ot_v06.py diskread`: one 36 MB file read 6 times in 1 MB requests with the Mac's cache bypassed (`F_NOCACHE`), every 64 KB block compared across the reads | fixed image: 551 blocks x 6 reads, 0 differing, 0 with `0f f8 00 00`; the unit sent 131 clock bytes, all before COMMAND 1. Image from before the fix: 79 differing blocks, 65 with `0f f8 00 00` over the first word in one read only (2.0 % of 3,306), 662 clock bytes. 64 KB requests do not trigger it (0 differing on the old image) |
 
 Every audio check plays once first and discards it: the first START after a project load is silent on every image.
@@ -32,10 +33,9 @@ Every audio check plays once first and discards it: the first START after a proj
 
 What the cable runs above did not cover: the panel gestures, and the parts of the cable rows marked not shown.
 
-### #1270 OCTA303 v10.0 and OCTA303 SEAM (image: `octabam`; SEAM only in `test/octa303-seam`)
+### #1270 OCTA303 v10.0 and OCTA303 SEAM, what the cable did not show (image: `octabam` with the PR; SEAM only in `test/octa303-seam`)
 
-- [ ] CUT, RES and ENV high: no 11.025 kHz whistle.
-- [ ] ACCV over 64: no crack; the VCA does not clip or wrap.
+- [ ] ACCV over 64 on an accented step (an ACC lock on the step): no crack; the VCA does not clip or wrap.
 - [ ] GATE 303: the first trig after PLAY sounds.
 - [ ] dEVILish FM high with high RES and ENV: wild but pitched, not static. FM 0 unchanged.
 - [ ] A FLEX track on a sample named `TB303*` now plays its sample; the OCTA-303 machine is the way in.

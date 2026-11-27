@@ -201,6 +201,46 @@ def cmd_vca_key(a):
         rig.close()
 
 
+def spectrum_peak(x, t, a_s, b_s, hz, band=(9000, 13000), guard=250):
+    """Level of the bin at `hz` above the median of `band` (excluding +-guard Hz), averaged spectrum of track t: a narrow tone
+    standing out of the noise floor (a whistle) reads tens of dB."""
+    c0, c1 = track_cols(t)
+    seg = x[int(a_s * FS):int(b_s * FS), c0:c1 + 1].mean(axis=1)
+    n = 8192
+    win = np.hanning(n)
+    acc = np.zeros(n // 2 + 1)
+    k = 0
+    for i in range(0, len(seg) - n, n // 2):
+        acc += np.abs(np.fft.rfft(seg[i:i + n] * win)) ** 2
+        k += 1
+    f = np.fft.rfftfreq(n, 1 / FS)
+    p = 10 * np.log10(np.maximum(acc / max(k, 1), 1e-30))
+    near = (np.abs(f - hz) < 60)
+    ref = (f > band[0]) & (f < band[1]) & (np.abs(f - hz) > guard)
+    return float(p[near].max() - np.median(p[ref]))
+
+
+def cmd_octa303(a):
+    """#1270 on T1+T2 OCTA-303 tracks (project V06_OCT: program 2 has CUT, RES, ENV at 127; program 16 has ACCV 110 and the accent knob up):
+    the 11.025 kHz whistle, and clicks, clipping and wrapping with a high ACCV."""
+    import ot_matrix as M
+    rig = Rig()
+    try:
+        rig.play(2, 3.0, tail=0.5)                      # the first START after a load is silent
+        for prog, label, ev in ((2, "CUT RES ENV 127", []), (16, "ACCV 110, ACC 127", []), (17, "ACCV 64, ACC 127", [])):
+            for rep in range(2):
+                x, n = rig.play(prog, 7.0, events=ev, tail=0.3)
+                ts = n / FS
+                seg = x[int(1.0 * FS):int(ts * FS), 0:2]
+                ce = M.click_events(seg, FS)
+                e, b, nb = (sum(c[i] for c in ce) for i in range(3))
+                clip = int((np.abs(seg) >= 0.9999).sum())
+                print(f"  program {prog:2d} ({label}) run {rep + 1}: T1 rms {level(x, 1, 1.0, ts):6.1f} peak {peak(x, 1, 1.0, ts):6.1f} dBFS  "
+                      f"11.025 kHz over its band {spectrum_peak(x, 1, 1.0, ts, 11025):5.1f} dB  clicks {e:4d} ({b} blocks)  clipped samples {clip}", flush=True)
+    finally:
+        rig.close()
+
+
 def cmd_cx_fold(a):
     """#1263: FOLD moved with DEC at HOLD clicked. T1 is a CX OSC track (project V06_RIG, program 17, image V06-RIG): the click
     count on its own channels with FOLD static (0 and 100) and swept 0 to 127 over six seconds."""
@@ -235,10 +275,11 @@ def main():
     sub.add_parser("wave-stop")
     sub.add_parser("verb")
     sub.add_parser("vca-key")
+    sub.add_parser("octa303")
     p = sub.add_parser("cx-fold")
     p.add_argument("--prog", type=int, default=17)
     a = ap.parse_args()
-    {"tracks": cmd_tracks, "wave-stop": cmd_wave_stop, "cx-fold": cmd_cx_fold, "verb": cmd_verb, "vca-key": cmd_vca_key}[a.cmd](a)
+    {"tracks": cmd_tracks, "wave-stop": cmd_wave_stop, "cx-fold": cmd_cx_fold, "verb": cmd_verb, "vca-key": cmd_vca_key, "octa303": cmd_octa303}[a.cmd](a)
 
 
 if __name__ == "__main__":
