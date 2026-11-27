@@ -1,6 +1,6 @@
 # FRAME GUARD
 
-A frame interrupt that enters 140 to 190 µs late waits until it is 190 µs
+A frame interrupt that enters 110 to 190 µs late waits until it is 190 µs
 late. ColdFire only; no DSP code or state, nothing on the panel.
 Author: Sam Banks. On hardware (Sam's MKII, 12 Nov 2026).
 
@@ -42,7 +42,7 @@ Inferred, not measured: at that lateness the ColdFire's transfer chain is
 still sending when the DSP starts its next frame, and the exchange loses
 step. A core A log (the 513-word block reported from a STALL PROBE build,
 Nov 2026) fits it. What would falsify the window as the whole cause on a
-shipping image: a stall there with an entry lateness outside 140 to 190 µs
+shipping image: a stall there with an entry lateness outside 110 to 190 µs
 in the frame log.
 
 ## The change
@@ -50,7 +50,7 @@ in the frame log.
 One detour at the frame interrupt's entry `0x4000aad0`. `fg_in` keeps each
 entry's lateness against the DSP's frame grid (the previous lateness plus
 the interval between entries less a frame, floored at 0, modulo a frame;
-DMA timer 3 at 132 MHz). An entry more than 140 and less than 190 µs late
+DMA timer 3 at 132 MHz). An entry more than 110 and less than 190 µs late
 spins until it is 190 µs late, then the stock handler runs. The DSP then
 skips one frame, as it does without the guard for an entry that late.
 `fg_waits` counts the waits. After the skipped frame the next entry is on
@@ -74,19 +74,23 @@ and 192 program changes without a stall (16 and 96 as test code inside
 LOAD METER's entry, 16 and 96 as this module); every guarded entry was
 followed by one skipped frame.
 
-## On an MKI
+Not measured: what the skipped frame does to audio that is sounding at
+that moment; an MKI; a remix other than `octabam`.
 
-The stall window on an MKI starts at or below 146.8 µs: entries 149.8 and
-146.8 µs late stalled, one 129.5 µs late ran on. With 8 recorders and 8
-voices playing, each bar start makes the next entry 127 to 134 µs late, and
-those run on by themselves. The lower edge is 140 µs so that the guard
-leaves them alone; at 110 µs it waited on nearly every bar.
+## The lower edge: 110 µs, not 140 (26 to 27 Nov 2026)
 
-## What a guarded entry sounds like
+#1255 moved the edge to 140 µs (`FG_LLO`) because on an MKI with 8 recorders and 8 voices each bar
+start's next entry is 127 to 134 µs late and, at 110 µs, the guard waited on it: an audible click
+(#1173). It was reverted the next day.
 
-A guarded entry is audible: a click on sounding audio, and a USB audio
-stream 16 frames short for that entry. The guard trades a stopped engine
-for a click, which is why the lower edge sits no lower than it needs to.
+Read over USB from a stalled MKII (27 Nov 2026, `octabam` at main `01dfe53c` with
+`tools/hw/framelog.patch`, USB capture open, a program change or START from the host): the frame
+interrupt count stopped, and the last entries were a 494 µs frame interrupt (the START frame), the
+next entry 498.4 µs after it (135.6 µs late), then entries 293.4 and 269.8 µs after the previous
+one, then none. Below the 140 µs edge, so the guard did not act. In the same log a 471.8 µs START
+frame was followed by an entry 113.6 µs late, one 290 µs gap, and the unit ran on. The frame
+interrupts in those images run 270 to 300 µs of the 362.8 µs period.
 
-A build can move the edge by defining `FG_LLO` (DMA timer 3 counts, 132 a
-microsecond) before `guard.s` reads it.
+The MKI's harmless bar starts (up to 134 µs late) and the MKII's stall (135.6 µs late) are 1.6 µs
+apart, so no single edge separates them on these two measurements. Not measured: the 110 µs edge on
+the image that stalled, over enough START and program-change cycles to count.

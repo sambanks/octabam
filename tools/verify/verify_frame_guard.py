@@ -7,7 +7,7 @@ instructions run. Checked per entry: whether it waited, how late the entry was w
 the alone build the prologue's frame and the jump to 0x4000aad8.
 
 This proves the decision and the wait's length. It does not model the DSP: that an entry 190 us late makes the DSP
-skip a frame, and that the window 140-190 us holds the stall, are measurements on a unit (guard.s's header).
+skip a frame, and that the window 110-190 us holds the stall, are measurements on a unit (guard.s's header).
 """
 import pathlib
 import struct
@@ -33,22 +33,20 @@ DTCN3 = 0xFC07C00C
 US = 132                        # timer counts a microsecond
 TICK = 12                       # counts an instruction in the model (0.09 us)
 FRAME = 362.8
-LLO, LHI = 140, 190
+LLO, LHI = 110, 190
 
 # (interval before this entry in us, waits?) from a quiet start; lateness accumulates as guard.s computes it
 CASES = (
     ("on the grid", [(FRAME, False)] * 6),
     ("105 us late: below the window", [(FRAME, False), (FRAME + 105, False), (FRAME - 105, False)]),
-    ("135 us late (an MKI's bar start): below the window", [(FRAME, False), (FRAME + 135, False), (FRAME - 135, False)]),
-    ("141 us late: waits", [(FRAME, False), (FRAME + 141, True)]),
-    ("146.8 us late (an MKI's stall): waits", [(FRAME, False), (FRAME + 146.8, True)]),
+    ("111 us late: waits", [(FRAME, False), (FRAME + 111, True)]),
     ("149 us late (a logged stall's entry): waits", [(FRAME, False), (FRAME + 149, True)]),
     ("155 us late (the other): waits", [(FRAME, False), (FRAME + 155, True)]),
     ("189 us late: waits", [(FRAME, False), (FRAME + 189, True)]),
     ("195 us late: past the window", [(FRAME, False), (FRAME + 195, False)]),
     ("after a guarded entry the skipped frame's successor is on the grid",
      [(FRAME, False), (FRAME + 149, True), (2 * FRAME - 149, False), (FRAME, False)]),
-    ("two late entries in a row: lateness carries", [(FRAME, False), (FRAME + 75, False), (FRAME + 75, True)]),
+    ("two late entries in a row: lateness carries", [(FRAME, False), (FRAME + 60, False), (FRAME + 60, True)]),
     ("a gap of five frames is on time", [(FRAME, False), (5 * FRAME + 150, False), (FRAME, False)]),
     # the lateness after a skipped frame must not decay into the window (13 Nov 2026: it did, 0.12 s later)
     ("800 on-grid entries after a guarded entry and its skipped frame",
