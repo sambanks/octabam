@@ -212,6 +212,31 @@ added for was the DSP (above). It is sent on both models so that an MKI
 takes the same path as an MKII; the bootstrap is one for both and opens
 every power-on with `60 00`, so an MKI panel probably takes the same pair.
 
+**The USB controller.** Before the delay that follows, the switcher clears
+the controller's run bit and sets RST (`USBCMD`, `0xfc0b0140`), bounded at
+65,536 reads for RST to clear. ✅ Measured on one MKII (27 Nov 2026), self-boots
+of the running image's own `.RMX` (`ot_v06.py switch`, `COMMAND 3`, idle unit):
+without this step 6 of 22 switches stopped; with it 3 of 170 did.
+- Without it: 3 left the new image running, project loaded (REMOTE's card log
+  shows its boot records), with no USB device on the host (a re-plug did not
+  bring it back, a power-cycle did); 1 stopped on the `SYNCING PROJECT` dialog
+  with the keys dead, before the reset; 2 were not classified.
+- With it: 40 in a row on the code in this commit; then 23 more, then 77 and 27
+  on builds that add USB and OTG watches to REMOTE (a separate change). The
+  3 stops: 2 with the new image running and no USB, 1 on the boot screen with
+  no boot records from the new image.
+
+The cause of the no-USB kind is inferred. Attach is the stock handler for the
+OTG session-valid interrupt (`0x4001e91c` region: BSVIS with BSV set calls
+`0x4001d630`, which sets `USBCMD.RS`; nothing else calls it). In every one of
+27 good boots read with REMOTE's watches the flag byte `OTGSC[23:16]` read `45`
+(BSVIS set) at the first frame and `USBCMD` went to `1` from it. The soft
+reset may leave the controller configured, and the new image's start-up then
+finds the old one's state. No stopped boot with the OTG watches on has been
+read yet: the one stop in that run was the boot-screen kind. This step does not
+address the `SYNCING PROJECT` stop or the boot-screen stop
+(`docs/contributing/FAILURE_MODES.md`).
+
 ## Exported labels
 
 `osw_names` (the list's 24-byte names, 32 of them), `osw_count` and `osw_idx` are global labels: REMOTE

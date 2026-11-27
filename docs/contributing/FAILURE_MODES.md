@@ -832,6 +832,19 @@ taken; the unit reset, showed the boot screen and did not return to USB in 150 s
   hardware):** COMMAND 3 and BRAIN > REMIXES from a stalled DSP refuse; `MB_PARK` (`0x41200038`, PEEK) reads 3 after
   every switch.
 
+- **27 Nov 2026, MKII, `octabam` at main `63d13072`: three different stops, and a fix for one (REMIX SWITCH resets the USB controller).**
+  Self-boots of the running image's own `.RMX` (COMMAND 3, idle unit, `ot_v06.py switch`; `out/hw/boot_ledger.tsv`; no host USB for 150 s):
+  - **No USB, unit running.** The screen normal and the keys responsive; a re-plug did not bring USB back, a power-cycle did (once two). REMOTE's card log shows
+    the new image's boot records (`RMT 0 18 3`, `20 3`, `2 254`) after the COMMAND 3 record, so the switch worked and the new image booted.
+  - **`SYNCING PROJECT` dialog, keys dead.** COMMAND 3 logged, no boot records from a new image. The dialog is stock's; `osw_load` then waits with no
+    time limit on the event `0x46c901b8` (the prio-2 task `0x40091d18`'s) to read 0. Seen once.
+  - **Boot screen.** COMMAND 3 logged, no boot records. Seen once.
+  Without the controller reset, 6 stops in 22 switches (3 no-USB, 1 `SYNCING PROJECT`, 2 not classified); with it, 3 in 170 (2 no-USB, 1 boot screen).
+  Did not change the rate: a 16 times longer delay after the panel's `60 02`, clearing only USBCMD.RS, a 2 s bound on the event wait.
+  With REMOTE watching USBCMD, PORTSC1 and OTGSC (not in main): a good boot reads PORTSC1 `4`, OTGSC flags `45` (BSVIS), USBCMD `1`, PORTSC1 `5` within the first frame; a no-USB boot
+  (without the OTGSC watch) read USBCMD never leaving 0. MB_PARK read 3 after every boot that returned. Not known: why a no-USB boot's RS stays clear, what the boot-screen
+  and `SYNCING PROJECT` stops wait on.
+
 |  |
 
 ## USB DISK MODE entered by COMMAND 1, the card never mounts on the Mac: a stale `diskN` after `diskutil unmount`
