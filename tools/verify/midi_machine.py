@@ -62,7 +62,7 @@ class Machine:
         if symbol_loader is None:
             def symbol_loader():
                 raw=subprocess.check_output(['m68k-elf-nm',str(ROOT/'out/platform/runtime/runtime.elf')],text=True)
-                return {name:int(address,16) for address,name in re.findall(r'^([0-9a-f]+) [TtBb] ((?:bf|mh|hd|ms|ch)_\w+)$',raw,re.M)}
+                return {name:int(address,16) for address,name in re.findall(r'^([0-9a-f]+) [TtBb] ((?:bf|mh|hd|ms|sc|scn|mhc)_\w+)$',raw,re.M)}
         self.sym=symbol_loader(); self.uc=Uc(UC_ARCH_M68K,UC_MODE_BIG_ENDIAN)
         out = artifact_root or ROOT/'out'
         layout = json.loads((out/'platform/layout.json').read_text())
@@ -92,6 +92,12 @@ class Machine:
                             b'\x23' if follow_defaults else b'\x03')
                 u.mem_write(0x400e21e0+0x8ed80+p*0x18b2+0x4e2+t*36+15,
                             b'\x03' if follow_defaults else b'\x02')
+    def initialize_scenes(self):
+        """Run the installed project's one-time Scenes initialization before editing."""
+        if 'scn_slot_ptr' in self.sym:
+            # fill_ff executes three instructions per longword of the 256 KiB library.
+            self.call('scn_slot_ptr', 0, 0, instruction_budget=3 * (256 * 1024 // 4) + 256)
+
     def part_address(self,track,field):
         bank=int.from_bytes(self.uc.mem_read(0x46c82456,4),'big')
         part=self.uc.mem_read(0x100b14cf,1)[0]

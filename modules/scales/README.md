@@ -229,3 +229,21 @@ author's later line does, at `0x4009fb80` (timhastie, #980), where
 SCALES' scale applies first and SCALE QUANTIZER's SCALE / ROOT after it,
 the order SCALE QUANTIZER documents for stock's KEY. Inferred from the
 two sites; not run until that line is pinned.
+
+## Harmony and Follow
+
+The collected `midi` remix retains all 52 scales. FOLLOW inherits the source
+track's scale and displays it read-only; RFOL OFF restores the track's local
+choice. Harmony accepts the seven diatonic modes only. Unsupported local or
+inherited scales show a message, suppress new Harmony notes and preserve degree
+intent. Select a supported scale before changing HARM, including turning it OFF.
+Harmony-generated chord tones keep their explicit intervals rather than being
+quantized a second time. Factory absolute chords belong on HARM OFF tracks.
+
+`sc_track_at` reads a local explicit STORE context (0..63 working, 64..127 saved)
+and never follows a source. Saved KEY follows the existing destination-Part ID
+semantics described above; this does not introduce a separate saved ID snapshot.
+`sc_decode_at` resolves an already-read KEY (d0), context (d1) and track (d2),
+returning ID<<4|tonic or -1, with only d0/d1/a0 scratch. `sc_key_descriptor`
+returns the seven-mode native KEY's mask/tonic/native-snap descriptor; it does
+not consult Part IDs. These read-only services do not own MIDI emission.

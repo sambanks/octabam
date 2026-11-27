@@ -22,6 +22,7 @@ def choose(pc, previous, home):
 def main():
     subprocess.run([sys.executable,str(ROOT/'modules/midi-follow/upstream/modules/midi-follow/generate.py'),'--check'],check=True)
     m=Machine(symbols,profile='follow');u=m.uc;s=m.sym
+    m.initialize_scenes()
     for address,name in ((0x4009c3d4,'seq_start'),(0x4009c4d4,'seq_resume'),
                          (0x4009fbb2,'seq_sent_a'),(0x4009fcfa,'seq_sent_b')):
         assert bytes(u.mem_read(address,6))==b'\x4e\xf9'+s[name].to_bytes(4,'big')
@@ -104,7 +105,8 @@ def main():
     part=0x400e21e0+0x8ed80;copy=m.scratch+0x1000
     u.mem_write(copy,bytes(u.mem_read(part,0x18b2)))
     u.mem_write(m.stack+4,struct.pack('>III',part,copy,0x18b2))
-    m.call('store_part_native_copy');assert query()==24
+    m.call('store_part_native_copy')
+    assert query()==24
     # Ordinary pattern changes do not touch the native Part identity.
     root(35);begin();query();sent();u.mem_write(0x100b14d0,b'\x01')
     root(0);begin();assert query()==36

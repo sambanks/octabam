@@ -22,7 +22,7 @@ SOURCES = ('chords.c', 'adapter.c')
 # (sc_track, sc_mask, sc_keyboard), STORE's (files, the Part reads); adapter.c's window,
 # layer, drawing and MIDI calls (its enum). GCC prints those in decimal: the
 # scan reads both.
-STOCK_CALLS = {'sc_track', 'sc_mask', 'sc_keyboard',
+STOCK_CALLS = {'ms_track', 'mh_get', 'sc_track', 'sc_mask', 'sc_keyboard',
                '0x40012254', '0x40012bd8', '0x40012f30', '0x4003146c', '0x40031494', '0x40035624',
                '0x40055db4', '0x4005829c', '0x40016388', '0x40010bc8',
                'store_path', 'store_fopen', 'store_fread', 'store_fwrite', 'store_fclose', 'store_crc32',
@@ -77,7 +77,7 @@ def assemble(source):
         src = pathlib.Path(td) / 'chords_unit.s'
         src.write_text(source)
         # The build's remix.inc sets HAVE_SCALES; both forms must assemble.
-        (pathlib.Path(td) / 'remix.inc').write_text('.set HAVE_SCALES, 1\n.set CH_CLIENT, 8\n')
+        (pathlib.Path(td) / 'remix.inc').write_text('.set HAVE_SCALES, 1\n.set HAVE_HARMONY, 1\n.set HAVE_MIDI_SCALES, 1\n.set CH_CLIENT, 8\n')
         result = subprocess.run([compiler(), '-mcpu=5475', '-c', '-x', 'assembler', f'-Wa,-I{td}', str(src),
                                  '-o', str(pathlib.Path(td) / 'chords_unit.o')], capture_output=True, text=True)
         if result.returncode:

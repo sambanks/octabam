@@ -21,8 +21,21 @@ scripts/m68k-toolchain.sh --check "$PREFIX" \
   || pkgs+=(pkgconf texinfo libgmp-dev libmpfr-dev libmpc-dev libisl-dev libzstd-dev zlib1g-dev)
 # shellcheck disable=SC2206
 pkgs+=(${EXTRA_PACKAGES:-})
-$SUDO apt-get update
-$SUDO apt-get install -y "${pkgs[@]}"
+apt_sources=()
+if [[ ${RUNNER_ENVIRONMENT:-} == github-hosted ]]; then
+  # Runner images use different files for their Ubuntu mirrors. Keep the
+  # default sources.list and every source except the unrelated Microsoft feed.
+  apt_parts=$(mktemp -d)
+  trap 'rm -r -- "$apt_parts"' EXIT
+  chmod 755 "$apt_parts"
+  for source in /etc/apt/sources.list.d/*.{list,sources}; do
+    [[ -f "$source" ]] || continue
+    grep -qF packages.microsoft.com "$source" || ln -s "$source" "$apt_parts/"
+  done
+  apt_sources=(-o "Dir::Etc::sourceparts=$apt_parts")
+fi
+$SUDO apt-get "${apt_sources[@]}" update
+$SUDO apt-get "${apt_sources[@]}" install -y "${pkgs[@]}"
 command -v uv >/dev/null 2>&1 \
   || echo "setup-linux: uv not installed; make emu-setup needs it (curl -LsSf https://astral.sh/uv/install.sh | sh)"
 

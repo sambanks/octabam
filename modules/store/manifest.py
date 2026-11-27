@@ -13,7 +13,7 @@ client that is not in the remix is left out of the tables.
 import runpy
 from pathlib import Path
 
-from remix.schema import Category, Detour, Kind, Linked, Module, Evidence, Level
+from remix.schema import Category, Detour, Gate, Kind, Linked, Module, Evidence, Level
 
 H = bytes.fromhex
 
@@ -24,6 +24,9 @@ EVENTS = (
     "bankw_pre", "bankw_post", "pstore_pre", "pstore_post", "preload_post",
     "bankcopy", "tocs1", "fromcs1", "partsaved", "partclear",
 )
+
+CHECKED_EVENTS = ("bankw_guard", "bankcopy_guard", "bankcopy_done")
+EXTRA_EVENTS = (*CHECKED_EVENTS, "newproj_post")
 
 # (module key, symbol prefix, events handled). Table order is run order. A key may
 # be a tuple of module keys: the client is in when all of them are.
@@ -73,6 +76,8 @@ CLIENTS = (
     # pmute.work and the current bank's copy in CS1 (modules/pattern-mute, sambanks/octabam#1143)
     ("PATTERN MUTE", "pm", ("loadall_pre", "loadmask_pre", "newproj", "bankw_post", "pstore_pre",
                             "pstore_post", "preload_post", "tocs1", "fromcs1")),
+    ("MIDI HARMONY", "mhc", ("loadall_post", "loadmask_post", "newproj", "newproj_post",
+                           "bankw_guard", "bankcopy_guard", "bankcopy_done", "tocs1", "fromcs1")),
 )
 
 
@@ -98,7 +103,13 @@ def store_inc(modules, remix):
                                         key=lambda c: CLIENT_IDS[c[0]]):
         pre = {k: p for k, p, _e in CLIENTS}[key]
         out.append(f"        .long   {pre}_st_answer" if present(key, modules) else "        .long   0")
-    for ev in EVENTS:
+    selected_events = {ev for key, _prefix, handled in CLIENTS if present(key, modules) for ev in handled}
+    extra = [ev for ev in EXTRA_EVENTS if ev in selected_events]
+    defines = [f".set STORE_{ev.upper()},1" for ev in extra]
+    if selected_events.intersection(CHECKED_EVENTS):
+        defines.append(".set STORE_CHECKED,1")
+    out[0:0] = defines
+    for ev in (*EVENTS, *extra):
         out.append(f"ev_{ev}:")
         for key, prefix, handled in CLIENTS:
             if present(key, modules) and ev in handled:
@@ -116,6 +127,7 @@ MODULE = Module(
         note="cursory testing on Sam's MKII (owner report, 16 Oct 2026)"),),
     doc="Platform: the stock save, load, copy, CS1 and Part sites STORE clients share.",
     linked=(Linked("store", "modules/store/store.s", dram=True, include=store_inc),),
+    gates=(Gate("tools/verify/verify_store_copy.py", stage="image", venv=True),),
     detours=(
         Detour(0x40090504, H("4feffeb848d77cfc"), "store", "store_loadall",
                "a load of every bank", pad_to=8),
@@ -171,6 +183,12 @@ _BASE = MODULE
 
 def select(modules):
     extra = _PARTS['additions'](modules)
+    retained = _PARTS['_RETAINED']['additions'](modules)
+    extra['linked'] += retained['linked']
+    extra['pokes'] += retained['pokes']
+    extra['gates'] += retained['gates']
+    if retained['sram']:
+        extra['claims'] = replace(extra['claims'], sram=retained['sram'])
     return dict(linked=_BASE.linked + extra['linked'],
                 detours=_BASE.detours + extra['detours'],
                 pokes=_BASE.pokes + extra['pokes'],
@@ -178,4 +196,4 @@ def select(modules):
 
 from dataclasses import replace
 MODULE = replace(MODULE, select=select,
-    proof_note=MODULE.proof_note + "; native Part access extension: hardware testing outstanding")
+    proof_note=MODULE.proof_note + "; native Part access and optional retained storage: hardware testing outstanding")

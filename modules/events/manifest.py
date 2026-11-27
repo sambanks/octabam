@@ -15,13 +15,16 @@ LOCKS_KEY = runpy.run_path(str(Path(__file__).parents[1] / 'pages/manifest.py'))
 FAMILIES = {
     'transport': ('start', 'resume'),
     'midi': ('note_accepted',),
-    'edit': ('held', 'copy_pre', 'scene_held', 'steps', 'held_press'),
+    'edit': ('held', 'copy_pre', 'copy_post', 'scene_held', 'steps', 'held_press'),
 }
 CLIENTS = {
     'transport': (('EUCLID', 'eu_seq', ('start', 'resume')),
-                  ('MIDI FOLLOW', 'bf_seq', ('start', 'resume'))),
-    'midi': (('MIDI FOLLOW', 'bf_seq', ('note_accepted',)),),
-    'edit': (('PLOCKS P2', 'plk_ed', ('held', 'copy_pre', 'held_press')),
+                  ('MIDI FOLLOW', 'bf_seq', ('start', 'resume')),
+                  ('MIDI HARMONY', 'mh_seq', ('start', 'resume'))),
+    'midi': (('MIDI FOLLOW', 'bf_seq', ('note_accepted',)),
+             ('MIDI HARMONY', 'mh_seq', ('note_accepted',))),
+    'edit': (('MIDI HARMONY', 'mh_ed', ('held', 'held_press', 'copy_pre', 'copy_post')),
+             ('PLOCKS P2', 'plk_ed', ('held', 'copy_pre', 'held_press')),
              (LOCKS_KEY, 'pg', ('held', 'scene_held', 'copy_pre', 'steps'))),
 }
 
@@ -77,7 +80,7 @@ def event_inc(modules, remix=None):
                 out += ['    movem.l (%sp),%d0-%d3', f'    jsr {names[0]}']
             elif event == 'steps':           # the site's record: op, then up to five arguments
                 out += ['    movem.l (%sp),%d0-%d5', f'    jsr {names[0]}']
-            elif event == 'copy_pre':
+            elif event in ('copy_pre', 'copy_post'):
                 out += ['    move.l 68(%sp),%d0', '    move.l 72(%sp),%d1',
                         '    move.l 76(%sp),%d2', f'    jsr {names[0]}']
             else:
@@ -92,7 +95,7 @@ def event_inc(modules, remix=None):
 def select(modules):
     """Only claimed boundaries/code enter the bound module and claims ledger."""
     active = {event for event, handlers in registrations(modules).items() if handlers}
-    detours = tuple(d for event, hooks in HOOKS.items() if event in active for d in hooks)
+    detours = tuple(dict.fromkeys(d for event, hooks in HOOKS.items() if event in active for d in hooks))
     units = tuple(u for u in UNITS if any(d.unit == u.label for d in detours))
     return {'linked': units, 'detours': detours}
 
@@ -165,6 +168,7 @@ HOOKS['edit', 'held_press'] = (
            'held-step knob push ownership', pad_to=8),)
 HOOKS['edit', 'scene_held'] = _EDIT_HOOKS[1:3]
 HOOKS['edit', 'copy_pre'] = _EDIT_HOOKS[3:]
+HOOKS['edit', 'copy_post'] = _EDIT_HOOKS[3:]
 
 MODULE = Module(
     name='events', key='EVENTS', kind=Kind.CF_PATCH,
@@ -172,7 +176,7 @@ MODULE = Module(
     evidence=(Evidence(Level.EMULATOR,
         note="Tested on radiohagen's MKII (25 Oct 2026): transport and trig-paste undo."),),
     doc='System: transport and MIDI notifications, held-step ownership and copy notifications.',
-    linked=UNITS, detours=tuple(d for hooks in HOOKS.values() for d in hooks),
+    linked=UNITS, detours=tuple(dict.fromkeys(d for hooks in HOOKS.values() for d in hooks)),
     select=select,
     gates=(Gate('tools/verify/verify_system_events.py', once=True, venv=True),
            Gate('tools/verify/verify_edit_events.py', once=True, venv=True),

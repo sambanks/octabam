@@ -32,7 +32,27 @@ def _sources(modules, _remix):
     ids = runpy.run_path(str(Path(__file__).parents[1] / "store/manifest.py"))["CLIENT_IDS"]
     return (f".set HAVE_SCALE_QUANTIZER, {int('SCALE QUANTIZER' in modules)}\n"
             f".set HAVE_CHORDS, {int('CHORDS FACTORY' in modules)}\n"
-            f".set SC_CLIENT, {ids['SCALES']}\n")
+            f".set SC_CLIENT, {ids['SCALES']}\n" + _clients(modules))
+
+
+# The local reader remains independent of routing. UI/output adapters ask
+# the selected route and pitch owners at their existing boundaries.
+SOURCE_CLIENTS = (('MIDI FOLLOW', 'bf_source_resolve_at'),)
+PITCH_CLIENTS = (('MIDI HARMONY', 'mh_active'),)
+
+
+def _clients(modules):
+    routes = [symbol for key, symbol in SOURCE_CLIENTS if key in modules]
+    if len(routes) > 1:
+        raise ValueError('SCALES permits one selected MIDI route owner')
+    out = ['.macro sc_resolve_source']
+    out += [f'    jsr {symbol}' for symbol in routes]
+    out += ['.endm', '.macro sc_owned_pitch']
+    for i, (key, symbol) in enumerate(PITCH_CLIENTS):
+        if key in modules:
+            out += [f'    jsr {symbol}', '    tst.l %d0', '    bne.w .output_owned']
+    out += ['.endm']
+    return '\n'.join(out) + '\n'
 
 
 MODULE = Module(

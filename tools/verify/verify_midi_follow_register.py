@@ -7,6 +7,7 @@ from unicorn.m68k_const import *
 
 def main():
     m=Machine(profile='follow');u=m.uc;s=m.sym;lane=m.scratch+0x1000
+    m.initialize_scenes()
     def edit(track,control,delta):
         m.call('bf_reg_change',track,control,regs={UC_M68K_REG_D2:delta&0xffffffff})
     for track in range(8):

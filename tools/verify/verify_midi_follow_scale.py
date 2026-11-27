@@ -61,6 +61,21 @@ def main():
                 expected = m.call('ms_snap', pitch, key)
                 assert m.call('bf_quant', pitch, 2) == expected
         print('[ok] 60 additional MIDI Scales choices use the extension after TRAN')
+    elif 'sc_encoder' in m.sym:
+        assert bytes(m.uc.mem_read(0x4007a3e2, 6)) == b'\x4e\xf9' + m.sym['sc_encoder'].to_bytes(4, 'big')
+        assert int.from_bytes(m.uc.mem_read(0x400d40c6, 4), 'big') == m.sym['sc_format']
+        m.set_key(0, 1)  # C major at the source, different local keys on both followers
+        for track in (1, 2):
+            m.set_key(track, 24)
+        for track in (0, 1, 2):
+            m.uc.mem_write(0x100b14cc, bytes((track,)))
+            assert m.call('sc_track', track) == 1 << 4
+            assert m.call('sc_can_edit') == int(track == 0)
+            if track:
+                m.call('sc_encoder', 5, stop=0x4007a3ea, regs={UC_M68K_REG_D5: 4})
+                assert m.uc.reg_read(UC_M68K_REG_D5) == 0
+                assert m.uc.mem_read(m.part_address(track, 17), 1)[0] == 24
+        print('[ok] SCALES owns the KEY controls and preserves the local KEY on direct and chained followers')
     else:
         # Native-only UI retains the original formatter/setter. The installed
         # hooks supply inherited KEY and reject edits only on followers.

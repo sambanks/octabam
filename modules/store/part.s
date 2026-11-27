@@ -136,6 +136,24 @@ store_part_read:
     lea 20(%sp),%sp
     rts
 
+/* Read the saved copy of a native Part using the same registered windows.
+ * d0 Part offset,d1 bank*4+Part (0..63) -> byte or -1. No working-copy
+ * snapshot applies here; this entry never writes either copy. */
+.global store_part_saved_read
+store_part_saved_read:
+    lea -20(%sp),%sp
+    movem.l %d4-%d6/%a0-%a1,(%sp)
+    bsr.w .address
+    tst.l %d0
+    bmi.s .saved_done
+    adda.l #0x9504a-0x8ed80,%a0
+    moveq #0,%d0
+    move.b (%a0),%d0
+.saved_done:
+    movem.l (%sp),%d4-%d6/%a0-%a1
+    lea 20(%sp),%sp
+    rts
+
 .snapshot_address:
     cmpa.l store_part_snapshot_bank,%a1
     bne.s .snapshot_done

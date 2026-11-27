@@ -25,8 +25,18 @@ The follower also inherits the source's KEY for correction after its own TRAN.
 Its KEY display shows the source setting and cannot be edited while following.
 KEY OFF leaves transposition chromatic. For example, C with TRAN +1 gives C♯
 with KEY OFF, but C with KEY C major. Stock major/minor scales work with
-Follow alone; MIDI Scales adds more choices. The follower's saved KEY returns
+Follow alone; MIDI SCALES adds seven modes and SCALES offers all 52 scales. The follower's saved KEY returns
 when RFOL is switched OFF.
+
+## Share a progression with Harmony
+
+In the **midi** remix, a Harmony source can drive a NOTE bass, CHORD stabs
+and an arp, each with its own rhythm and register. Followers use the source's
+resolved root and KEY, then choose their own Harmony chord quality and
+voicing. They do not copy the source's generated chord voices. **TRIG** waits
+for each follower's next trig; **LIVE** also moves held notes with the source.
+**RFOL OFF** keeps a track independent, and Harmony works without Follow.
+See the [four-track musical example](midi-harmony.md#arrange-a-song-with-the-midi-remix).
 
 ## Storage and compatibility
 
