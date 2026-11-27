@@ -94,6 +94,8 @@ def audio_inc(modules, remix):
     for i in range(0, XLV_WORDS, 8):
         lines.append("    .long " + ", ".join(f"0x{w:06x}" for w in words[i:i + 8]))
     lines.append(".endm")
+    import os
+    lines.append(f".set WD_TEST, {1 if os.environ.get('USB_WD_TEST') == '1' else 0}")
     return "\n".join(lines) + descriptors.audio_remix_inc(modules, remix)
 
 
