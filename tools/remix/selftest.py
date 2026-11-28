@@ -1114,6 +1114,8 @@ def main():
              "resonator": ("PLATE REV",),   # RESONATOR runs in its words; the other 13 stay
              "vibrato": ("PLATE REV",),
              "vibrato-fx2": ("PLATE REV",),   # the same, with SLOTS = FX1+FX2   # VIBRATO's 593 words run in PLATE REV's 594; its table in PLATE's X data
+             "tuned-comb": ("PLATE REV", "SPRING REV"),   # TUNED COMB's 1,166 words and its table in one run of their words; DARK REV stays
+             "tuned-comb-fx2": ("PLATE REV", "SPRING REV"),   # the same, with SLOTS = FX1+FX2
              "vocoder": ("PLATE REV", "DJ EQ"),   # VOCODER runs in PLATE's words; DJ EQ out so the tables sit in X
              "vocoder-usb": ("PLATE REV", "DJ EQ"),   # the vocoder remix + USB MIDI and USB AUDIO (ColdFire, no DSP words)
              "events-empty": ("SPRING REV", "DARK REV"),
