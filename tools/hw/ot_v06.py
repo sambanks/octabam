@@ -52,11 +52,15 @@ MARK = bytes.fromhex("0ff80000")
 
 
 def health(u):
+    """(alive, why): LOAD METER's reading, or for an image without LOAD METER (its request STALLs) the ColdFire's frame count advancing."""
     import load_meter
     try:
         return load_meter.healthy(u.dev)
     except (SystemExit, Exception) as e:  # noqa: BLE001
-        return False, str(e)
+        try:
+            return ot_card.cf_counting(u), "no LOAD METER: the ColdFire counts, the DSP is not read"
+        except (SystemExit, Exception):  # noqa: BLE001
+            return False, str(e)
 
 
 def switch(names, cycles, counter=None):
@@ -65,7 +69,7 @@ def switch(names, cycles, counter=None):
     for i in range(cycles):
         name = names[i % len(names)]
         t0 = time.monotonic()
-        r = subprocess.run([sys.executable, os.path.join(HERE, "ot_card.py"), "boot", name], cwd=ROOT,
+        r = subprocess.run([sys.executable, os.path.join(HERE, "ot_card.py"), "boot", name, "--settle", "0"], cwd=ROOT,
                            capture_output=True, text=True)
         row = dict(n=i + 1, name=name, rc=r.returncode, seconds=round(time.monotonic() - t0),
                    tail=(r.stdout + r.stderr).strip().splitlines()[-3:])
