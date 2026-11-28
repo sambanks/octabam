@@ -1,4 +1,4 @@
-# Octabam Bus v0.5
+# Octabam Bus v0.6
 
 Octabam Bus turns the eight FX2 slots into a shared delay and reverb send bus
 accessible from every track, while keeping Octabam's core workflow features.

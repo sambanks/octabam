@@ -9,5 +9,5 @@ that builds at the release tag and passes `make check` in the publish run
 (`tools/web/publish.py`); CI's own runs leave them out, so that check is theirs.
 """
 
-VERSION = "v0.5"          # the git tag the builder's patches are built from
+VERSION = "v0.6"          # the git tag the builder's patches are built from
 REMIXES = ("octabam", "octabam-verbs", "octabam-bus")

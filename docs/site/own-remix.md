@@ -63,7 +63,7 @@ for details on the `BUILD` tag, and follow
 
 ## Next steps
 
-- Ready-made remixes: [Octabam v0.5](remix-octabam.md),
+- Ready-made remixes: [Octabam v0.6](remix-octabam.md),
   [Octabam Verbs](remix-octabam-verbs.md), and
   [Octabam Bus](remix-octabam-bus.md).
 - Browse [Community Remixes](reference/community.md) shared by other users, or

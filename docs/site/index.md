@@ -6,7 +6,7 @@ Octabam adds community-built features to the Elektron Octatrack's operating
 system (OS 1.40C), including Kits, templates, expanded scenes and parameter
 locks, USB audio and MIDI, and new effects. You build it in your browser from
 your own copy of OS 1.40C and install it from a CF card or over MIDI. This site
-covers **version 0.5** and its three remixes: [Octabam](remix-octabam.md),
+covers **version 0.6** and its three remixes: [Octabam](remix-octabam.md),
 [Octabam Verbs](remix-octabam-verbs.md), and
 [Octabam Bus](remix-octabam-bus.md). Octabam is unofficial community software;
 see [About](about.md).
