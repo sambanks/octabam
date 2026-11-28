@@ -27,6 +27,30 @@ unit until this).
 | #1270 OCTA303 v10.0 (PR branch merged onto main as `OCTABAM O3`; the images before are main's v7.1) | OCTA-303 on T1 and T2 with CUT, RES, ENV at 127: the 11.025 kHz bin over its band (9 to 13 kHz median) on T1; and with the accent knob at 127, ACCV 110 against ACCV 64: click events on T1 and clipped samples | the whistle (CUT, RES, ENV at 127): 23.0 and 20.2 dB on v7.1, 4.0 and 4.2 dB on v10.0. Not shown: the crack with ACCV over 64 (ACCV 110 and ACCV 64 give the same click counts on both images: 292 to 392 on v7.1, 116 to 246 against 138 to 152 on v10.0), clipping or wrapping (0 clipped samples on both). DRIV 127 with ACCV 127 and SQR+D on both tracks, 7 s: no clipped samples on either image; peak -12.8 dBFS on v7.1 and -19.6 on v10.0 (the PR's DRIV range is +10 dB against +18); click events 1552 to 1920 on v7.1 and 2772 to 2818 on v10.0, the 11.025 kHz bin 13 to 14 dB over its band on both (the distortion pedal's harmonics, not separable from a defect by this count). Not run: GATE 303's first trig after PLAY, dEVILish FM at high RES and ENV, the `TB303*` sample track now playing its sample, the ColdFire cost |
 | #1264 USB MIDI paused in DISK MODE | CLOCK SEND on, `ot_v06.py diskread`: one 36 MB file read 6 times in 1 MB requests with the Mac's cache bypassed (`F_NOCACHE`), every 64 KB block compared across the reads | fixed image: 551 blocks x 6 reads, 0 differing, 0 with `0f f8 00 00`; the unit sent 131 clock bytes, all before COMMAND 1. Image from before the fix: 79 differing blocks, 65 with `0f f8 00 00` over the first word in one read only (2.0 % of 3,306), 662 clock bytes. 64 KB requests do not trigger it (0 differing on the old image) |
 
+## Release image R1 (28 Nov 2026, main `5f9e1a1c`, flashed, one MKII)
+
+| item | what ran | result |
+|---|---|---|
+| REMIX SWITCH | 12 boots round-robin between `OCTABAM R1`, `OCTABAM-VRB R1`, `V06-RIG R1` (`ot_v06.py switch`) | 12 of 12 returned, MB_PARK 3 each, 15 to 18 s each |
+| #1264 | `diskread` on R1 | 551 blocks x 6 reads, 0 differing, 0 with `0f f8 00 00`; 438 clock bytes sent |
+| matrix, `octabam` | 7 layouts (`V06_OCT`) | no crash, freeze or overload; DSP 46.4 / 27.9 % with machine tracks, ColdFire 75 to 83 %; flags: LEVEL on machine slots (2 of 8 tracks play a machine), CLICKS on the ACCV slots, ROUGH on DRIV 127 SQR+D |
+| matrix, `V06-RIG R1` | 6 layouts (`V06_RIG`) | no crash or freeze; STATIC LEVEL CLIP on both VCA160 `dear` slots (+10 dB), LEVEL on CX OSC |
+| matrix, `octabam-verbs` | 9 layouts (`V06_VRB`) | no crash or freeze; DSP 61.5 / 53.3 %, ColdFire about 73 % with VERBERATION on 8 tracks; flags: STATIC LEVEL CLIP on the `dear` slots, CLICKS LEVEL on MODE 0, RINGS on MODE 2 (the matrix's one STOP; not repeated with a double STOP), LEVEL on MODE 3 `dear` |
+
+DISK MODE from the cable (`COMMAND 1`) refuses after the unit has been idle: the unit logs `COMMAND 1` and `BANKW`, then about
+3 s later `NEWPROJ` and `BANK 0` with no `COMMAND 2`, and the card never mounts. 27 Nov 2026, measured:
+
+- A 3 s wait after a switch missed 3 of 4 times; 15 s and 30 s hit 6 of 6.
+- Once it misses, it keeps missing (14 attempts over 8 minutes, then 20 more minutes of polling), and it cleared
+  at once when a key was pressed on the panel, 3 of 3 times. A REMIX SWITCH does not clear it.
+- After a key press it worked for about 216 s of no panel input, then missed. A REMIX SWITCH at 156 s moved that
+  first miss to 358 s.
+- Not the screen saver: its idle counter and state (`0x460d1a50`, `0x460d1a54`) read awake while it missed, and a
+  REMOTE build that zeroes the counter in every command did not clear it. Not the attach watchdog (`wd_fired` 0), the
+  sequencer, or the audio capture.
+- The same miss on the `W4` images, before #1295, #1296 and #1270; `ot_card.py`'s `enter_disk` records an 18 Nov
+  sighting. Not known: the cause, or whether the panel's own USB DISK MODE is affected.
+
 Every audio check plays once first and discards it: the first START after a project load is silent on every image.
 
 ## Check by hand
@@ -59,15 +83,14 @@ What the cable runs above did not cover: the panel gestures, and the parts of th
 - [ ] A MIDI track set to INT: its notes reach the Octatrack's own receiver (an audio track listening on the track's channel plays them).
 - [ ] BOTH: out and internal at once.
 
-### #1252 TEMPLATES FX tab and #1251 KIT templates (image: `octabam`)
+### #1251 KIT templates and #1252's end state (image: `octabam`)
 
-- [ ] Tab order: KIT, FX, MIDI, PROJECT.
-- [ ] NEW FX TEMPLATE in a Part: one record with the FX1 and FX2 ids and both pages of all eight tracks.
-- [ ] APPLY TO FX in another Part: ids and values arrive on every track. Not measured before: non-zero ids.
-- [ ] An id not in the image refuses with `EFFECT NOT IN IMAGE`. RENAME and DELETE work.
-- [ ] On an FX1 or FX2 page FUNC lists SAVE FX DEFAULT and CLEAR FX DEFAULT only.
-- [ ] KIT template: SRC pages of STATIC, FLEX, THRU, NEIGHBOR and PICKUP, and AMP pages 1 and 2. WHOLE KIT includes AMP; sample slots and levels are not carried.
-- [ ] Each section alone (FROM Tn ONTO Tm), and the FLEX/STATIC and AMP group screens.
+#1268 removed the FX tab and the FX templates that #1252 added; the PR text for #1252 no longer describes the image.
+
+- [ ] Tabs are KIT, MIDI and PROJECT. No FX tab, no NEW FX TEMPLATE, no APPLY TO FX.
+- [ ] On an FX1 or FX2 page FUNC lists SAVE FX DEFAULT and CLEAR FX DEFAULT; both work.
+- [ ] KIT template: SRC pages of STATIC, FLEX, THRU, NEIGHBOR and PICKUP, and AMP pages 1 and 2. WHOLE KIT includes AMP and the Part's effect ids and pages; sample slots and levels are not carried.
+- [ ] Each section alone (FROM Tn ONTO Tm), and the FLEX/STATIC and AMP group screens. RENAME and DELETE work on a KIT template.
 
 ### #1250 and #1229 TEMPO BUS (image: `octabam-bus`, MKII keymap)
 

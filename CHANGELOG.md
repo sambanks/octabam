@@ -16,6 +16,20 @@ including Image 90 (`usb-lean`). Other documents cite 94, 96 and 99 for
 
 The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
 
+## OCTABAM R1, 28 Nov 2026, octabam remix
+
+- Release candidate for 0.6, flashed on an MKII from the card (`OCTATRACK_OCTABAMR1.bin`). Built from main
+  `5f9e1a1c` with `make image REMIX=octabam BUILD=R1`; `OCTABAM R1.RMX`, `OCTABAM BUS R1.RMX` and
+  `OCTABAM-VRB R1.RMX` are the same commit.
+- SHA-256: `OCTATRACK_OCTABAMR1.bin` `98d31164d3b2f9949862e289f1faaeb4102cce1877a0184ee64c385feb70405e`;
+  `OCTABAM R1.RMX` `091d981b89ff864d96f88bf222fee49a56c090bf5b0aeee419d81614eb21e667`;
+  `OCTABAM BUS R1.RMX` `70117857900d7bc6b1d858e0a1127ed6a4e792a27e038bf7205f0f5d28a581b4`;
+  `OCTABAM-VRB R1.RMX` `413364004bbc3f47a04b7c5fb5b70c965960965318e23db19caaa9ea5be9009b`.
+- On this image (`ot_v06.py`, `docs/contributing/HARDWARE_V06.md`): 12 REMIX SWITCH boots between `OCTABAM R1`,
+  `OCTABAM-VRB R1` and `V06-RIG R1` all returned, MB_PARK 3 each time; the DISK MODE read of #1264 (551 blocks, 6 reads,
+  0 differing); the `octabam` matrix (7 layouts) and `octabam-verbs` matrix (9 layouts) ran with no crash or freeze;
+  DSP busy 61.5 % / 53.3 % with VERBERATION on 8 tracks; ColdFire 73 to 83 % across the matrices.
+
 ## OCTABAM 83, 25 Nov 2026, octabam remix
 
 - Ilia confirmed on his MKII that the bundled SEQ changes work, including

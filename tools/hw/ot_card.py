@@ -106,9 +106,14 @@ def wait_card(mounted, timeout=60):
 DISK_FLAG = 0x460e76a0          # nonzero while the unit is in USB DISK MODE (modules/remote/README.md)
 
 
-def enter_disk(u, attempts=6):
+BOOT_SETTLE = 15.0      # 27 Nov 2026, R1 and W4: DISK MODE entered 3 s after a switch returned missed 3 of 4 times; after 15 s or 30 s, 6 of 6 hit
+
+
+def enter_disk(u, attempts=14):
     """COMMAND 1 and the card's mount. The unit sometimes clears the flag within 4 s and the card never appears
-    (18 Nov 2026, `octabam-bus` 05 and, later, `octabam-verbs` 05 and `octabam` 05); each attempt is logged."""
+    (18 Nov 2026, `octabam-bus` 05 and, later, `octabam-verbs` 05 and `octabam` 05); each attempt is logged. 27 Nov 2026:
+    after a matrix run and a switch it missed for minutes and then worked with no panel action, so the retries run about
+    8 minutes (14 attempts, 30 s apart); a miss leaves the unit's remix list empty until a clean enter and leave."""
     if os.path.isdir(os.path.join(CARD, "BRAIN")):
         return
     for n in range(1, attempts + 1):
@@ -126,7 +131,7 @@ def enter_disk(u, attempts=6):
             if flag == 0 and time.monotonic() - t0 > 6:
                 break
         print(f"attempt {n}: COMMAND 1 {'taken' if taken else 'refused'}, disk-mode flag {flag}, no card after {time.monotonic() - t0:.0f} s")
-        time.sleep(10.0)
+        time.sleep(30.0)
     sys.exit(f"{CARD} did not mount in {attempts} attempts")
 
 
@@ -426,6 +431,7 @@ def cmd_boot(a):
         if got != want:
             return 1
     print("fingerprint", before, "->", after, "(changed)" if after != before else "(same: the image did not change, or both share addresses)")
+    time.sleep(a.settle)
     return 0
 
 
@@ -444,6 +450,8 @@ def main():
     p = sub.add_parser("boot")
     p.add_argument("name")
     p.add_argument("--wait", type=float, default=150.0)
+    p.add_argument("--settle", type=float, default=BOOT_SETTLE,
+                   help="seconds to wait after the unit has returned (0 for none): DISK MODE entered sooner can miss")
     a = ap.parse_args()
     if a.cmd == "image":
         return cmd_image(a)
