@@ -43,6 +43,9 @@ Each carries one module, or one combination, for that module's gates: `make chec
 | [`fet76`](fet76/README.md) | FET76 (modelled on the UREI 1176LN FET limiter) on FX1 and FX2, beside the stock effects but CHORUS, SPATIALIZER, PLATE REV and SPRING REV. |
 | [`frame-guard`](frame-guard/README.md) | Stock effects with a late frame interrupt held out of the DSP's stall window. |
 | [`free-loop`](free-loop/README.md) | stock effects with FREE LOOP: a loop pedal per track, the first free loop sets the tempo. |
+| [`granular`](granular/README.md) | The four-grain FLEX source engine and stock effects. |
+| [`granular-bus`](granular-bus/README.md) | Standard octabam-bus's utilities, delay/reverb hosts, SEND and FX1 effects, plus GRANULAR. |
+| [`granular-octabam`](granular-octabam/README.md) | Standard octabam's utilities, stock and demand-loaded effects, with GRANULAR replacing OCTA303. |
 | [`hooks`](hooks/README.md) | REC THRESHOLD and FREE LOOP together (HOOKS bridges the status icons) with STORE and the stock effects. |
 | [`hooks-boot`](hooks-boot/README.md) | BOOT TRACE beside STORE and MIDI LOOPBACK: HOOKS runs both at the boot's post-loader call. |
 | [`hooks-chrom-303`](hooks-chrom-303/README.md) | OCTA303 (the OCTA-303 machine) beside SCALE QUANTIZER: HOOKS gives a 303 track's CHROMATIC keys to OCTA303 and every other track's to SCALE QUANTIZER. |
