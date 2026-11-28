@@ -1082,6 +1082,7 @@ def main():
              "slow-lfo": (),   # SLOW LFO: ColdFire, no DSP words, on the 14 stock effects
              "bar-led": (),   # BAR LED: ColdFire, no DSP words, on the 14 stock effects
              "xfcurve": (), "xfcurve-scurve": (),   # XF CURVE: ColdFire, no DSP words, on the 14 stock effects
+             "granular": (), "granular-octabam": (),   # GRANULAR keeps every stock effect; no region harvest
              # the twelve io remixes: the IN module's RX inject is placed in SPATIALIZER's words
              **{f"usb-io-{o}-{i}": ("SPATIALIZER",) for o in ("tracks", "tracks-main-cue", "main-cue", "main") for i in ("ab", "cd", "abcd")},
              "usb-midi-tracks-hw": ("SPATIALIZER",), "usb-midi-tracks-hw-off": ("SPATIALIZER",),   # unit-test images: SPATIALIZER's DSP words go to LOAD METER
@@ -1125,6 +1126,7 @@ def main():
              "rig": _rig,
              "character-txtr": _rig,   # octabam-bus with the TXTR station
              "octabam-bus": _rig,   # FX1 lists only the three stations: the 13 stock effects give up their DSP code (FX2 is locked, so no row for the reverbs)
+             "granular-bus": _rig,   # octabam-bus plus GRANULAR (ColdFire, no DSP words): the same harvest as octabam-bus
              "stations-fx2": _rig}
     for _n in registry.remix_names():
         _r = registry.remix(_n)

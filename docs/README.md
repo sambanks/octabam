@@ -37,6 +37,7 @@ Individual modules, remixes, and tools also have their own READMEs at
 | [contributing/SCREENSHOTS.md](contributing/SCREENSHOTS.md) | How to capture screenshots for the manual |
 | [../tools/site/README.md](../tools/site/README.md) | How the manual site and web builder are generated |
 | [../AGENTS.md](../AGENTS.md) | Working rules for contributors and coding agents |
+| [../modules/granular/README.md](../modules/granular/README.md) | The GRANULAR FLEX source engine: controls, sample formats, gate, and hardware status |
 
 ## Test on a unit
 
