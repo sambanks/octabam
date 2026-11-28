@@ -43,7 +43,11 @@ MODULE = Module(
     evidence=(Evidence(Level.UNIT, unit="MKII", who="Bryan T", image="_bt_daily BUILD 98", date="2026-11-27",
         note="TUNED COMB on FX1 of all eight tracks, LOAD METER: sounds as intended, FUNC stops "
              "walk as documented; 4.6 % a slot held, 5.8-5.9 % with an LFO on LP and the crossfader on FB, "
-             "different trigs on every track"),),
+             "different trigs on every track"),
+              Evidence(Level.UNIT, unit="MKII", who="Bryan T", image="_bt_daily BUILD 99", date="2026-11-27",
+        note="with the input's DC blocker, on FX1 of all eight tracks: a re-recorded looped phrase has its "
+             "DC at -78 dBFS (it was -17 dBFS) and symmetric peaks; LOAD METER 6.5 % a slot with a "
+             "triangle LFO on LP, settled (5.9 % on build 98)"),),
     doc="Stock COMB's page with the pitch held in tune at any LP and FB, on FX1, or FX1 and FX2 (SLOTS).",
     menu=MenuEntry(
         # 0x1e: a free-pool id; RESONATOR prefers it too, and the registry

@@ -139,15 +139,16 @@ stock loop, the on-circle correction and the pole solve). The DSP and
 
 ## Load
 
-Measured before the input's DC blocker, which adds 24 one-word instructions
-a sample (both channels), to be re-measured on a unit: about 4.5 % of a frame a slot with the knobs held, and about 6 % with a knob
-moving every block (an LFO on LP, FB on the crossfader); stock COMB FILTER is
+On the unit (build 99, eight instances, an LFO on LP, the meter settled)
+about 6.5 % of a frame a slot, up from 5.9 % before the input's DC blocker
+(24 one-word instructions a sample, both channels); with the knobs held it
+was 4.6 % before the blocker, not yet re-measured. Stock COMB FILTER is
 2.7 %. No selectable configuration of TUNED COMB alone can overload a core:
 its worst, eight instances on one core (SLOTS = FX1+FX2) with every knob
-moving, is about 48 % of a frame above the core's base, under the 95 % limit.
-Beside other effects
-the remix's bound is COSTS.md's: base + 4 x (dearest FX1 effect) + 4 x
-(dearest FX2 effect), with TUNED COMB at 6 % a slot.
+moving, was about 48 % of a frame above the core's base before the blocker,
+about 53 % scaled by the measured rise, under the 95 % limit. Beside other
+effects the remix's bound is COSTS.md's: base + 4 x (dearest FX1 effect) +
+4 x (dearest FX2 effect), with TUNED COMB at 6.5 % a slot.
 
 The sample loop keeps its carried values in address registers, walks the
 lowpass state with a pointer, runs both channels inline and reads most taps

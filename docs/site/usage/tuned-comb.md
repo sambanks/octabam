@@ -38,9 +38,9 @@ remixes; build the `tuned-comb` test remix to use it.
   - FB steps through decay times of 0.5, 1, 2, 5, 10 and 30 s on each side
     of 64, and 64 itself (no feedback).
   - MIX steps in quarters.
-- TUNED COMB uses about 4.5 % of a core held and about 6 % with its knobs
-  moving, against 2.7 % for the stock comb, so eight instances fit on one
-  core with room to spare.
+- TUNED COMB uses about 6.5 % of a core with its knobs moving, against
+  2.7 % for the stock comb, so eight instances fit on one core with room to
+  spare.
 
 ## Parameters
 
