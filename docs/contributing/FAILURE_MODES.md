@@ -865,6 +865,14 @@ taken; the unit reset, showed the boot screen and did not return to USB in 150 s
   and the other leaves the unit running without USB. Not known: which image runs in the second kind, whether re-plugging the cable
   brings USB back, what the sync call is waiting for, MB_PARK at a stop (it reads 3 after every boot that returned, 27 of 27).
 
+- **USB DISK MODE from the cable (`COMMAND 1`) does not mount the card after the unit has been idle (27 Nov 2026, MKII, `OCTABAM R1` and the `W4` images).**
+  The unit logs `COMMAND 1`, `BANKW`, then about 3 s later `NEWPROJ` and `BANK 0` with no `COMMAND 2`; the host sees only the `DPS-1` audio and
+  MIDI device, and the unit's remix list reads empty until a clean enter and leave. It keeps refusing (14 attempts over 8 minutes, then 20 more
+  minutes) and clears at once on a panel key press (3 of 3). After a key press it worked for about 216 s, then refused; a REMIX SWITCH at 156 s moved
+  the first refusal to 358 s. A switch entered 3 s after it returned missed 3 of 4; 15 s and 30 s hit 6 of 6. Not the screen saver (its counter and state read
+  awake), the attach watchdog (`wd_fired` 0), the sequencer or the audio capture. Not known: the cause, or whether the panel's USB DISK MODE is affected.
+  `ot_card.py` waits 15 s after a switch and retries for 8 minutes; `docs/contributing/HARDWARE_V06.md` has the measurements.
+
 |  |
 
 ## USB DISK MODE entered by COMMAND 1, the card never mounts on the Mac: a stale `diskN` after `diskutil unmount`

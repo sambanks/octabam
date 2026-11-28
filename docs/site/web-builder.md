@@ -1,6 +1,6 @@
 # Build and Install
 
-This page builds an Octabam v0.5 firmware image directly in your browser from
+This page builds an Octabam v0.6 firmware image directly in your browser from
 your own copy of Octatrack OS 1.40C. You can build [Octabam](remix-octabam.md),
 [Octabam Verbs](remix-octabam-verbs.md), [Octabam Bus](remix-octabam-bus.md), or
 any of the [Community Remixes](reference/community.md) listed under Community.

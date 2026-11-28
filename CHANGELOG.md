@@ -16,6 +16,20 @@ including Image 90 (`usb-lean`). Other documents cite 94, 96 and 99 for
 
 The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
 
+## OCTABAM R1, 28 Nov 2026, octabam remix
+
+- Release candidate for 0.6, flashed on an MKII from the card (`OCTATRACK_OCTABAMR1.bin`). Built from main
+  `5f9e1a1c` with `make image REMIX=octabam BUILD=R1`; `OCTABAM R1.RMX`, `OCTABAM BUS R1.RMX` and
+  `OCTABAM-VRB R1.RMX` are the same commit.
+- SHA-256: `OCTATRACK_OCTABAMR1.bin` `98d31164d3b2f9949862e289f1faaeb4102cce1877a0184ee64c385feb70405e`;
+  `OCTABAM R1.RMX` `091d981b89ff864d96f88bf222fee49a56c090bf5b0aeee419d81614eb21e667`;
+  `OCTABAM BUS R1.RMX` `70117857900d7bc6b1d858e0a1127ed6a4e792a27e038bf7205f0f5d28a581b4`;
+  `OCTABAM-VRB R1.RMX` `413364004bbc3f47a04b7c5fb5b70c965960965318e23db19caaa9ea5be9009b`.
+- On this image (`ot_v06.py`, `docs/contributing/HARDWARE_V06.md`): 12 REMIX SWITCH boots between `OCTABAM R1`,
+  `OCTABAM-VRB R1` and `V06-RIG R1` all returned, MB_PARK 3 each time; the DISK MODE read of #1264 (551 blocks, 6 reads,
+  0 differing); the `octabam` matrix (7 layouts) and `octabam-verbs` matrix (9 layouts) ran with no crash or freeze;
+  DSP busy 61.5 % / 53.3 % with VERBERATION on 8 tracks; ColdFire 73 to 83 % across the matrices.
+
 ## OCTABAM 83, 25 Nov 2026, octabam remix
 
 - Ilia confirmed on his MKII that the bundled SEQ changes work, including
@@ -49,6 +63,7 @@ The full text before this rewrite: `git show 666b6154:CHANGELOG.md`.
 
 ## Unreleased
 
+- **Site and builder version v0.6** (`tools/site/release.py`): the tag the web builder's patches are built from. The three published remixes are `octabam`, `octabam-verbs` and `octabam-bus`, as at v0.5. The notes are `.github/releases/v0.6.md`; the release candidate `OCTABAM R1` (flashed, main `5f9e1a1c`) is the entry above.
 - **USB: USB and DIN MIDI input together** (#1248; `modules/usb`). A USB message arriving between a DIN sender's running-status bytes replaced DIN's running status in the one stock framer both inputs share: after a USB program change, every later DIN data byte parsed as a program change, each a pattern change (the reporter's DAW program changes over USB, with the Octatrack's own MIDI out looped into DIN). The decoder now frames DIN's bytes first, saves the framer's state, parses the USB channel or system common message and puts DIN's state back, half-received message included. Realtime bytes and USB SysEx are unchanged. Gate: `verify_usb_midi_din_mix` (v0.5 fails all four checks); `verify_usbmidi_isr` stubs the framer, whose `rte` unicorn does not run. Not flashed.
 - **BROWSE PATH GUARD** (#1258; `modules/browse-path-guard`, new): the sample browser no longer locks up on a file whose full path passes 259 characters. Stock 1.40C built each file's path into 260-byte buffers with an unbounded `strcat` and `sprintf`; a longer path wrote over the browser's LOADING... flag (`0x460e49f4`), so the footer read LOADING... and the browser would not open again until a power cycle, and over its current folder (`0x460e4c00`). Three stock address operands now point at bounded copies; the file shows ERR. The card's 259-character limit itself is unchanged (a slot past it loads as ERROR): a `PATH=` can be at most 260 minus the set name's length. In `octabam`, `octabam-verbs` and `octabam-bus`, and `remixes/test/browse-path-guard`. Gate: `verify_browse_path_guard` (stock fails 14 of its 36 checks). Not flashed.
 - **ARR ROW CAP** (#1257; `modules/arr-row-cap`, new): adding a row at END OF ARR. stops at 256 rows with ROW LIMIT REACHED, as an insert anywhere else in the list already does. In stock 1.40C that append had no check: the 257th row was written past the arrangement's 5652-byte working state, over the next arrangement's name, row count and first row, and the next save wrote it into that arrangement's files. A 6-byte detour at `0x4009e50c`. In `octabam`, `octabam-verbs` and `octabam-bus`, and `remixes/test/arr-row-cap`. Gate: `verify_arr_row_cap` (under the port, stock's insert called at 100, 255 and 256 rows; stock fails 3 of its 7 checks). Not flashed.
