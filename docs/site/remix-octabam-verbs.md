@@ -1,4 +1,4 @@
-# Octabam Verbs v0.5
+# Octabam Verbs v0.6
 
 Octabam Verbs is based on [Octabam](remix-octabam.md), replacing the three stock
 reverbs with VERBERATION and using the reclaimed DSP space for three additional
