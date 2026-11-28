@@ -83,15 +83,14 @@ What the cable runs above did not cover: the panel gestures, and the parts of th
 - [ ] A MIDI track set to INT: its notes reach the Octatrack's own receiver (an audio track listening on the track's channel plays them).
 - [ ] BOTH: out and internal at once.
 
-### #1252 TEMPLATES FX tab and #1251 KIT templates (image: `octabam`)
+### #1251 KIT templates and #1252's end state (image: `octabam`)
 
-- [ ] Tab order: KIT, FX, MIDI, PROJECT.
-- [ ] NEW FX TEMPLATE in a Part: one record with the FX1 and FX2 ids and both pages of all eight tracks.
-- [ ] APPLY TO FX in another Part: ids and values arrive on every track. Not measured before: non-zero ids.
-- [ ] An id not in the image refuses with `EFFECT NOT IN IMAGE`. RENAME and DELETE work.
-- [ ] On an FX1 or FX2 page FUNC lists SAVE FX DEFAULT and CLEAR FX DEFAULT only.
-- [ ] KIT template: SRC pages of STATIC, FLEX, THRU, NEIGHBOR and PICKUP, and AMP pages 1 and 2. WHOLE KIT includes AMP; sample slots and levels are not carried.
-- [ ] Each section alone (FROM Tn ONTO Tm), and the FLEX/STATIC and AMP group screens.
+#1268 removed the FX tab and the FX templates that #1252 added; the PR text for #1252 no longer describes the image.
+
+- [ ] Tabs are KIT, MIDI and PROJECT. No FX tab, no NEW FX TEMPLATE, no APPLY TO FX.
+- [ ] On an FX1 or FX2 page FUNC lists SAVE FX DEFAULT and CLEAR FX DEFAULT; both work.
+- [ ] KIT template: SRC pages of STATIC, FLEX, THRU, NEIGHBOR and PICKUP, and AMP pages 1 and 2. WHOLE KIT includes AMP and the Part's effect ids and pages; sample slots and levels are not carried.
+- [ ] Each section alone (FROM Tn ONTO Tm), and the FLEX/STATIC and AMP group screens. RENAME and DELETE work on a KIT template.
 
 ### #1250 and #1229 TEMPO BUS (image: `octabam-bus`, MKII keymap)
 
