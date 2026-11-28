@@ -1,9 +1,15 @@
 # GRANULAR with standard octabam
 
 This optional qualification preset derives from `octabam`, replacing the
-mutually exclusive OCTA303 source module with GRANULAR. The upstream standard
-preset is unchanged. Every other selection, USB setting, demand-loader home,
-reverb guard and FX1 chooser is preserved.
+mutually exclusive OCTA303 and WAVE CF source modules with GRANULAR. The
+upstream standard preset is unchanged. Every other selection, USB setting,
+demand-loader home, reverb guard and FX1 chooser is preserved.
+
+Rebased onto main `bf0105a7` (27 Nov 2026): `octabam` now also carries WAVE CF,
+which claims GRANULAR's FLEX renderer entry and page hook (`0x40031ece`), so this
+preset removes WAVE CF as well as OCTA303. The selected-module ledger is clean on
+that base; no build, gate or firmware case has been rerun there. The measurements
+below are against `99170b16`.
 
 It includes BRAIN/STORE, KITS, MIDI scenes, page-2 scenes/locks and CCs,
 USB tracks/MAIN/CUE, the recorder/bug fixes and standard utility modules.

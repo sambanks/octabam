@@ -1,9 +1,14 @@
 # GRANULAR with octabam-bus
 
-This optional qualification preset adds GRANULAR to `octabam-bus`; no source
-machine needs removal. The upstream standard preset is unchanged. All
-settings, fixed window homes, hidden/locked FX2 hosts and FX1 rows are
-preserved.
+This optional qualification preset derives from `octabam-bus`, replacing the
+mutually exclusive OCTA303 source module with GRANULAR. The upstream standard
+preset is unchanged. All other settings, fixed window homes, hidden/locked FX2
+hosts and FX1 rows are preserved.
+
+Rebased onto main `bf0105a7` (27 Nov 2026): `octabam-bus` now carries OCTA303,
+which shares GRANULAR's FLEX renderer and page hook, so this preset removes it.
+The selected-module ledger is clean on that base; no build, gate or firmware
+case has been rerun there. The measurements below are against `99170b16`.
 
 It carries BRAIN/STORE, KITS, MIDI scenes, page-2 scenes/locks and CCs,
 USB tracks/MAIN/CUE, the recorder/bug fixes and core utilities. BusDelay is

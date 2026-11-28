@@ -1,4 +1,4 @@
-"""Standard octabam-bus plus the GRANULAR FLEX source engine."""
+"""Standard octabam-bus with GRANULAR in place of the mutually exclusive OCTA303."""
 from dataclasses import replace
 
 from remix import registry
@@ -9,12 +9,12 @@ REMIX = replace(
     BASE,
     name="granular-bus",
     family="test",
-    modules=BASE.modules + ("GRANULAR",),
+    modules=tuple(key for key in BASE.modules if key != "OCTA303") + ("GRANULAR",),
     proof=Proof.PORT,
     proof_note=(
         "14-case GRANULAR firmware subset, serialized initialization/boot, menus, USB "
         "enumeration/settings and counted DSP budget pass. Isolated bus sends and "
         "CHARACTER audio checked on both cores. No full-remix or hardware qualification."
     ),
-    doc="Standard octabam-bus's utilities, delay/reverb hosts, SEND and FX1 effects, plus GRANULAR.",
+    doc="Standard octabam-bus's utilities, delay/reverb hosts, SEND and FX1 effects, with GRANULAR replacing OCTA303.",
 )

@@ -152,9 +152,10 @@ The optional presets `granular-octabam` and `granular-bus` derive from
 upstream `octabam` and `octabam-bus`; the standard presets are unchanged.
 See their READMEs under `remixes/test/` for exact selections and qualification.
 GRANULAR cannot coexist with SYNTH MACHINE, OCTA303, BLACKPYRAMIDS_303,
-ANALOG BD or CX OSC: they share the FLEX renderer/page hooks. Replacing
-OCTA303 is necessary for the standard bundle; the bus bundle needs no source
-machine removed.
+ANALOG BD or CX OSC: they share the FLEX renderer/page hooks. On main
+`bf0105a7` WAVE CF claims the same renderer entry and page hook (the build's
+ledger refuses the pair by site). The standard bundle replaces OCTA303 and
+WAVE CF; the bus bundle replaces OCTA303.
 
 Against upstream `99170b16`, both candidate builds, their selected-module
 ledgers and 14-case firmware subsets pass. Both also pass serialized
