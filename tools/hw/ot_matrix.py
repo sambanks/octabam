@@ -877,6 +877,7 @@ def cmd_run(a):
     try:
         with sd_stream:
             todo = parse_only(a.only, len(entries))
+            prev_prog = None
             if entries[0]["name"] == "BASE" and 0 not in todo:
                 todo.insert(0, 0)                   # every other layout is judged against BASE
                 print("BASE added to the run: layouts are compared with it")
@@ -891,6 +892,9 @@ def cmd_run(a):
                         break
                 clock.stop(); ot_events.wait_stopped(clock.remote, 0.3)
                 clock.pc_wait(pc_ch, e["program"], 0.8)
+                if prev_prog is not None and prev_prog // 16 != e["program"] // 16:
+                    time.sleep(a.bank_settle)           # a bank change loads the bank from the card: a START now is ignored
+                prev_prog = e["program"]
                 t_settle = time.time()
                 while live["db"] > SETTLE_DBFS and time.time() - t_settle < SETTLE_MAX_S:
                     time.sleep(0.25)  # waits for: audio level settling
@@ -1313,6 +1317,7 @@ def main():
     p.add_argument("--bpm", type=float, default=None, help="default: the project's (120 for a stimuli project), else 121")
     p.add_argument("--play", type=float, default=12.0); p.add_argument("--tail", type=float, default=3.0)
     p.add_argument("--only", default="")
+    p.add_argument("--bank-settle", type=float, default=3.0, help="seconds to wait after a program change into another bank, before START")
     p = sub.add_parser("audit"); p.add_argument("project")
     p = sub.add_parser("predict"); p.add_argument("remix")
     p.add_argument("--reports", nargs="+", required=True, help="report.json files of the single-effect runs, BASE first")

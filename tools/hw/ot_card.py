@@ -162,6 +162,15 @@ def same_tree(a, b):
     return all(same_tree(os.path.join(a, d), os.path.join(b, d)) for d in cmp.common_dirs)
 
 
+def cf_counting(u):
+    """The ColdFire's frame interrupt count (REMOTE's trace) advances: for an image without LOAD METER, whose
+    request STALLs. It says nothing about the DSP."""
+    base = struct.unpack(">I", ev.read_bytes(u.ctrl, 16, 4))[0]
+    a = struct.unpack(">I", ev.peek(u.peek1, base, 4))[0]
+    time.sleep(0.5)
+    return struct.unpack(">I", ev.peek(u.peek1, base, 4))[0] != a
+
+
 def wait_running(u, timeout=90.0):
     """Seconds until LOAD METER's health rule holds (the DSP's frame count advances, the frame interrupt keeps its
     rate), or None at the timeout. The count is 0 a second for a while after a project load or a boot: a phase that
@@ -177,9 +186,48 @@ def wait_running(u, timeout=90.0):
                 return time.monotonic() - t0
         except (SystemExit, Exception) as e:  # noqa: BLE001
             why = str(e)
+            if "Pipe error" in why:                 # no LOAD METER in this image
+                try:
+                    if cf_counting(u):
+                        print("no LOAD METER in this image: the ColdFire frame count advances; the DSP is not read")
+                        return time.monotonic() - t0
+                except (SystemExit, Exception):  # noqa: BLE001
+                    pass
         time.sleep(1.0)
     print(f"the unit is not running normally after {timeout:.0f} s: {why}")
     return None
+
+
+PARK_PROGRAM = 112      # bank H (8 banks a MIDI program change reaches, 16 programs each): no project of ours has a layout there
+
+
+def park_on_unused_bank(u, channel=1, program=PARK_PROGRAM):
+    """Leaving DISK MODE reloads every bank but the current one (docs/firmware/PARTS.md section 8: mask 0xfffb, the
+    power-up's path too), so a bank edited in the files that was current when the unit entered DISK MODE keeps its old
+    RAM (27 Nov 2026: pattern A01 read trigs on all eight tracks after a load of a project with T1 only; the panel's
+    own PROJECT > LOAD, which loads all banks, showed T1 only). A program change to a bank the project does not use,
+    sent before COMMAND 1, makes the reload read the edited banks. Needs MIDI program change receive on in the project
+    that is loaded now; without it the unit stays where it is and this says so."""
+    try:
+        import ot_midi
+        out = ot_midi.Out("Elektron Octatrack DPS-1")
+        out.send([0xC0 | (channel - 1), program & 0x7f])
+    except Exception as e:  # noqa: BLE001
+        print(f"could not send a program change to park the unit on an unused bank ({e}): a bank that is current will keep its old content")
+        return False
+    want = (program // 16, program % 16)
+    t0 = time.monotonic()
+    while time.monotonic() - t0 < 5.0:
+        try:
+            b = ev.peek(u.peek1, ev.BANK_ADDR, 2)
+            if (b[0], b[1]) == want:
+                time.sleep(1.0)
+                return True
+        except (SystemExit, Exception):  # noqa: BLE001
+            pass
+        time.sleep(0.1)
+    print("the unit did not move to bank H (program change receive off in the loaded project?): a bank that is current will keep its old content")
+    return False
 
 
 def cmd_load(a):
@@ -190,6 +238,7 @@ def cmd_load(a):
         sys.exit("--name is a directory name under PRESETS")
     u = Unit()
     head0 = ev.Events(u.ctrl).head()
+    park_on_unused_bank(u)
     enter_disk(u)
     # Copy beside the old project, compare, and only then swap: a copy that fails partway leaves the old one whole.
     dst = os.path.join(CARD, "PRESETS", a.name)
@@ -280,7 +329,7 @@ def cmd_copy(a):
 IMAGE_NAME_SCAN = (0x40ae0000, 0x40b70000)       # the resident runtime (RMT_TRACE, LOAD METER, DLPUMP's cells are in it)
 
 
-def running_image(u):
+def running_image(u, want=None):
     """The distinct `OCTABAM…` names in the resident runtime, sorted: the running image's own (`<REMIX> <BUILD>`, REMIX
     SWITCH's OSW_SELF), and any other name the range happens to hold. `one_name` says whether that is unambiguous.
     The ring fingerprint is the same for two builds that differ only in DSP code; this tells them apart (20 Nov 2026).
@@ -300,6 +349,8 @@ def running_image(u):
     # 24 characters after OCTABAM: a file name such as `OCTABAM-VRB 05.RMX` must be read whole, or a capture cut before
     # `.RMX` would pass the filter as a name of its own.
     found = {m.group().decode() for m in re.finditer(rb"OCTABAM[ -~]{0,24}", buf)}
+    if want and want.encode() in buf:      # an image whose name does not start with OCTABAM (V06-RIG)
+        found.add(want)
     return sorted(n for n in found if ".RMX" not in n.upper() and len(n) > len("OCTABAM"))
 
 
@@ -363,7 +414,7 @@ def cmd_boot(a):
     after = u.fingerprint()
     print(f"the DSP's frame count advances {t:.1f} s after the unit returned")
     want = a.name[:-4] if a.name.endswith(".RMX") else a.name
-    names = running_image(u)
+    names = running_image(u, want)
     got = one_name(names)
     if got is None and want in names:
         # several names in the range, the one asked for among them: not proof, not a failure

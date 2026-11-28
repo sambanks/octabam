@@ -118,3 +118,29 @@ Failures found while running the suite on earlier images, and the module sets th
 - Real material: all audio is synthetic.
 - The SFX project list is cut at 31 layouts per project; pair and split layouts need `ot_matrix.py predict`
   ([HARDWARE_MATRIX.md](HARDWARE_MATRIX.md)).
+
+## v0.6 checks (`ot_v06.py`, `ot_v06_audio.py`, `ot_v06_midi.py`)
+
+Results, pre-fix controls and the checks left for the panel: [HARDWARE_V06.md](HARDWARE_V06.md).
+
+```bash
+.venv/bin/python3 tools/hw/ot_v06_build.py build out/v06c                    # V06_OCT, V06_RIG, V06_VRB projects + v06.json
+.venv/bin/python3 tools/hw/ot_card.py load out/v06c/V06_OCT_01               # parks the unit on bank H first, then DISK MODE load
+.venv/bin/python3 tools/hw/ot_v06_audio.py wave-stop | cx-fold | verb | vca-key | octa303 | tracks PROG
+.venv/bin/python3 tools/hw/ot_v06_midi.py build out/v06m && ot_v06_midi.py run out/v06m
+.venv/bin/python3 tools/hw/ot_v06.py switch --names "<image>" --cycles N     # REMIX SWITCH self-boot soak
+.venv/bin/python3 tools/hw/ot_v06.py diskread --reads 6                      # needs V06_DISK_01 loaded, CLOCK SEND on
+.venv/bin/python3 tools/hw/ot_stallhunt.py --trials N                        # frame-log hunt (image built with tools/hw/framelog.patch)
+```
+
+- Images: `octabam`, `test/v06-rig` (CX OSC, VCA160, KEYBUS, REMOTE, USB, REMIX SWITCH), `octabam-verbs`, built with
+  `make rmx REMIX=<remix> BUILD=<tag>` into `/BRAIN/REMIXES`.
+- A machine slot is a FLEX track signed with the machine's Part signature (`Part + 0x3c + 30 * track`; file offset
+  `PART_BASE + 9 + 0x3c + 30 * track`) with its PLAYBACK and SETUP seeded by `ot_v06_build.machine_slot`.
+- `ot_card.py load` sends program change 112 first: leaving DISK MODE reloads every bank except the current one, so edits
+  to a current bank never reached the unit.
+- Per-track audio: with USB TRACKS PRE, track `t` is channels `2t-2` and `2t-1`. The first START after a load is
+  silent; every check plays once and discards it.
+- `diskread` needs 1 MB requests and `F_NOCACHE`; 64 KB requests do not trigger #1264.
+- A boot that does not return is a REMIX SWITCH stop ([FAILURE_MODES.md](FAILURE_MODES.md)); the run stops and the unit
+  needs a power-cycle. `out/hw/boot_ledger.tsv` has every attempt.
